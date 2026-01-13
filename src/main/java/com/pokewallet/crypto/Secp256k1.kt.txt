@@ -1,0 +1,175 @@
+package com.pokewallet.crypto
+
+import org.bouncycastle.crypto.digests.SHA256Digest
+import org.bouncycastle.crypto.ec.CustomNamedCurves
+import org.bouncycastle.crypto.params.ECDomainParameters
+import org.bouncycastle.crypto.params.ECPrivateKeyParameters
+import org.bouncycastle.crypto.signers.ECDSASigner
+import org.bouncycastle.crypto.signers.HMacDSAKCalculator
+import org.bouncycastle.jce.ECNamedCurveTable
+import org.bouncycastle.jce.provider.BouncyCastleProvider
+import org.bouncycastle.math.ec.ECPoint
+import java.io.ByteArrayOutputStream
+import java.math.BigInteger
+import java.security.Security
+
+object Secp256k1 {
+
+    // =================================================
+    // Provider
+    // =================================================
+
+    init {
+        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+            Security.addProvider(BouncyCastleProvider())
+        }
+    }
+
+    // =================================================
+    // Curva
+    // =================================================
+
+    private val CURVE = CustomNamedCurves.getByName("secp256k1")
+    private val DOMAIN = ECDomainParameters(
+        CURVE.curve,
+        CURVE.g,
+        CURVE.n,
+        CURVE.h
+    )
+
+    private val N: BigInteger = CURVE.n
+    private val HALF_N: BigInteger = N.shiftRight(1)
+
+    // =================================================
+    // Public keys
+    // =================================================
+
+    fun publicKeyFromPrivate(privateKey: ByteArray): ByteArray {
+        require(privateKey.size == 32)
+        val d = BigInteger(1, privateKey)
+        val q: ECPoint = CURVE.g.multiply(d).normalize()
+        return q.getEncoded(true)
+    }
+
+    fun xOnlyPublicKeyFromPrivate(privateKey: ByteArray): ByteArray {
+        val full = publicKeyFromPrivate(privateKey)
+        return full.copyOfRange(1, 33)
+    }
+
+    // =================================================
+    // ECDSA — BIP84 (preservado)
+    // =================================================
+
+    fun sign(
+        privateKey: ByteArray,
+        messageHash: ByteArray
+    ): ByteArray {
+
+        require(privateKey.size == 32)
+        require(messageHash.size == 32)
+
+        val d = BigInteger(1, privateKey)
+        val signer = ECDSASigner(HMacDSAKCalculator(SHA256Digest()))
+        signer.init(true, ECPrivateKeyParameters(d, DOMAIN))
+
+        val (rRaw, sRaw) = signer.generateSignature(messageHash)
+        val s = if (sRaw > HALF_N) N.subtract(sRaw) else sRaw
+
+        return derEncode(rRaw, s)
+    }
+
+    // =================================================
+    // Schnorr — BIP340 (CORRETO)
+    // =================================================
+
+    fun signSchnorr(
+        privateKey: ByteArray,
+        messageHash: ByteArray
+    ): ByteArray {
+
+        require(privateKey.size == 32)
+        require(messageHash.size == 32)
+
+        val d0 = BigInteger(1, privateKey)
+
+        // --- Ajuste da paridade da chave ---
+        val pub0 = CURVE.g.multiply(d0).normalize()
+        val d = if (pub0.yCoord.toBigInteger().testBit(0)) {
+            N.subtract(d0)
+        } else {
+            d0
+        }
+
+        val pub = CURVE.g.multiply(d).normalize()
+        val px = pub.xCoord.toBigInteger()
+
+        // --- Nonce determinístico (BIP340) ---
+        val k0 = CryptoUtils.taggedHash(
+            "BIP0340/nonce",
+            d.toBytes32() + px.toBytes32() + messageHash
+        ).toBigIntegerPositive().mod(N)
+
+        require(k0 != BigInteger.ZERO)
+
+        // --- Ajuste da paridade de R ---
+        val rPoint0 = CURVE.g.multiply(k0).normalize()
+        val k = if (rPoint0.yCoord.toBigInteger().testBit(0)) {
+            N.subtract(k0)
+        } else {
+            k0
+        }
+
+        val rPoint = CURVE.g.multiply(k).normalize()
+        val rx = rPoint.xCoord.toBigInteger()
+
+        val e = CryptoUtils.taggedHash(
+            "BIP0340/challenge",
+            rx.toBytes32() + px.toBytes32() + messageHash
+        ).toBigIntegerPositive().mod(N)
+
+        val s = k.add(e.multiply(d)).mod(N)
+
+        return rx.toBytes32() + s.toBytes32()
+    }
+
+    // =================================================
+    // DER helpers
+    // =================================================
+
+    private fun derEncode(r: BigInteger, s: BigInteger): ByteArray {
+        val rEnc = encodeDerInt(r)
+        val sEnc = encodeDerInt(s)
+
+        val out = ByteArrayOutputStream()
+        out.write(0x30)
+        out.write(rEnc.size + sEnc.size)
+        out.write(rEnc)
+        out.write(sEnc)
+
+        return out.toByteArray()
+    }
+
+    private fun encodeDerInt(value: BigInteger): ByteArray {
+        var bytes = value.toByteArray()
+        if (bytes[0] >= 0x80.toByte()) {
+            bytes = byteArrayOf(0x00) + bytes
+        }
+        return byteArrayOf(0x02, bytes.size.toByte()) + bytes
+    }
+
+    // =================================================
+    // Utils (BIP340-safe)
+    // =================================================
+
+    private fun BigInteger.toBytes32(): ByteArray {
+        val raw = this.toByteArray()
+        return when {
+            raw.size == 32 -> raw
+            raw.size > 32  -> raw.copyOfRange(raw.size - 32, raw.size)
+            else -> ByteArray(32 - raw.size) + raw
+        }
+    }
+
+    private fun ByteArray.toBigIntegerPositive(): BigInteger =
+        BigInteger(1, this)
+}

@@ -1,0 +1,7 @@
+1 cd "C:\Program Files\Bitcoin\daemon"
+.\bitcoind.exe -regtest
+
+
+2 cd "C:\Program Files\Bitcoin\daemon"
+.\bitcoin-cli.exe -regtest getblockchaininfo
+
