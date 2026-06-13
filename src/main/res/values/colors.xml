@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_dark">#0F1115</color>
+    <color name="card_dark">#1A1D23</color>
+    <color name="primary_red">#D90429</color>
+    <color name="primary_red_dark">#A0001C</color>
+    <color name="accent_yellow">#FFCB05</color>
+    <color name="text_primary">#F5F5F5</color>
+    <color name="text_secondary">#A7A7A7</color>
+    <color name="green_status">#22C55E</color>
+    <color name="bitcoin_orange">#F7931A</color>
+    <color name="error_red">#FF4444</color>
+    <color name="divider">#2A2D35</color>
+</resources>

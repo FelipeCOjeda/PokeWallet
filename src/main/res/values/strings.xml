@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PokéWallet</string>
+    <string name="new_journey">Nova Jornada</string>
+    <string name="restore_wallet">Restaurar com Seed</string>
+    <string name="scan_balance">Atualizar Saldo</string>
+    <string name="receive">Receber</string>
+    <string name="send">Enviar</string>
+    <string name="forget_wallet">Esquecer Wallet</string>
+    <string name="copy">Copiar Endereço</string>
+    <string name="cancel">Cancelar</string>
+    <string name="confirm">Confirmar</string>
+    <string name="destination_address">Endereço destino (bc1q…)</string>
+    <string name="amount_sats">Valor em satoshis</string>
+    <string name="sweep_all">Enviar tudo (sweep)</string>
+    <string name="i_noted_my_words">Já anotei — Verificar agora</string>
+    <string name="scanning">Varrendo endereços…</string>
+    <string name="sending">Enviando transação…</string>
+    <string name="sovereignty_warning">Sua seed é sua responsabilidade.\nNinguém pode recuperá-la por você.</string>
+    <string name="nav_base">Base</string>
+    <string name="nav_receive">Receber</string>
+    <string name="nav_send">Enviar</string>
+    <string name="nav_bag">Mochila</string>
+    <string name="scan_qr">📷 QR</string>
+    <string name="amount_btc">Valor em BTC</string>
+    <string name="amount_usd">Valor em USD ($)</string>
+    <string name="amount_brl">Valor em BRL (R$)</string>
+    <string name="currency_label">MOEDA</string>
+    <string name="pending_incoming">⏳ Recebimento pendente: %1$s sat</string>
+</resources>

@@ -7,10 +7,7 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider
 object Hashes {
 
     init {
-        // Garante que o BouncyCastle esteja registrado
-        if (Security.getProvider("BC") == null) {
-            Security.addProvider(BouncyCastleProvider())
-        }
+        ensureBouncyCastle()
     }
 
     /** SHA-256 */
@@ -27,4 +24,16 @@ object Hashes {
      */
     fun hash160(data: ByteArray): ByteArray =
         ripemd160(sha256(data))
+}
+
+/**
+ * Remove o BouncyCastle limitado do Android e insere o completo (com RIPEMD160).
+ * Deve ser chamado antes de qualquer operação criptográfica.
+ */
+fun ensureBouncyCastle() {
+    val existing = Security.getProvider("BC")
+    if (existing == null || existing !is BouncyCastleProvider) {
+        Security.removeProvider("BC")
+        Security.insertProviderAt(BouncyCastleProvider(), 1)
+    }
 }

@@ -65,7 +65,8 @@ object ExtendedKeySerializer {
         val payload = out.toByteArray()
         val checksum = checksum(payload)
 
-        return Base58.encode(payload + checksum)
+        // ✅ retorno correto + variável correta
+        return com.pokewallet.Base58.encode(payload + checksum)
     }
 
     // -------------------------
@@ -73,7 +74,10 @@ object ExtendedKeySerializer {
     // -------------------------
 
     private fun intToBytes(i: Int): ByteArray =
-        ByteBuffer.allocate(4).putInt(i).array()
+        ByteBuffer
+            .allocate(4)
+            .putInt(i)
+            .array()
 
     private fun checksum(data: ByteArray): ByteArray {
         val hash = sha256(sha256(data))
@@ -83,4 +87,3 @@ object ExtendedKeySerializer {
     private fun sha256(data: ByteArray): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(data)
 }
-

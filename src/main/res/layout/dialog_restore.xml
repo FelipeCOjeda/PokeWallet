@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/card_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="28dp">
+
+        <!-- Título -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🔑  Restaurar Wallet"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="20dp" />
+
+        <!-- Aviso -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="28dp"
+            app:cardBackgroundColor="#2A1A00"
+            app:cardCornerRadius="10dp"
+            app:cardElevation="0dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="14dp"
+                android:text="⚠️  Informe exatamente as 24 palavras e a passphrase que você anotou na criação."
+                android:textSize="13sp"
+                android:textColor="@color/bitcoin_orange"
+                android:lineSpacingExtra="3dp" />
+
+        </androidx.cardview.widget.CardView>
+
+        <!-- Label Mnemonic -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="MNEMONIC (24 PALAVRAS)"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.15"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="8dp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="palavra1 palavra2 palavra3…"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_marginBottom="8dp"
+            app:boxStrokeColor="@color/divider"
+            app:hintTextColor="@color/text_secondary">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_mnemonic"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textMultiLine|textNoSuggestions"
+                android:textColor="@color/text_primary"
+                android:fontFamily="monospace"
+                android:textSize="13sp"
+                android:minLines="4"
+                android:gravity="top"
+                android:paddingTop="14dp"
+                android:paddingBottom="14dp" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Contador de palavras -->
+        <TextView
+            android:id="@+id/tv_word_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="0 / 24 palavras"
+            android:textSize="12sp"
+            android:textColor="@color/text_secondary"
+            android:gravity="end"
+            android:layout_marginBottom="28dp" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/divider"
+            android:layout_marginBottom="28dp" />
+
+        <!-- Label Passphrase -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="PASSPHRASE POKÉMON"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.15"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="8dp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Ex: pokemon:74:Geodude"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_marginBottom="28dp"
+            app:boxStrokeColor="@color/divider"
+            app:hintTextColor="@color/text_secondary">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_passphrase_restore"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textVisiblePassword"
+                android:textColor="@color/text_primary"
+                android:fontFamily="monospace"
+                android:singleLine="true" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/divider"
+            android:layout_marginBottom="28dp" />
+
+        <!-- Label Rede -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="REDE"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.15"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="10dp" />
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chip_group_network"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:singleLine="true"
+            app:singleSelection="true"
+            app:selectionRequired="true"
+            android:layout_marginBottom="28dp">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_mainnet"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="MAINNET"
+                android:checked="true" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_testnet"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="TESTNET" />
+
+        </com.google.android.material.chip.ChipGroup>
+
+        <!-- Progresso -->
+        <ProgressBar
+            android:id="@+id/progress_restore"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:indeterminateTint="@color/accent_yellow"
+            android:layout_marginBottom="12dp"
+            android:visibility="gone" />
+
+        <!-- Erro -->
+        <TextView
+            android:id="@+id/tv_restore_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/error_red"
+            android:textSize="13sp"
+            android:lineSpacingExtra="3dp"
+            android:layout_marginBottom="12dp"
+            android:visibility="gone" />
+
+        <!-- Botões -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_cancel_restore"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:text="Cancelar"
+                android:textColor="@color/text_secondary"
+                app:strokeColor="@color/divider"
+                app:cornerRadius="12dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_confirm_restore"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:text="Restaurar"
+                android:textStyle="bold"
+                android:textColor="@color/bg_dark"
+                app:backgroundTint="@color/accent_yellow"
+                app:cornerRadius="12dp" />
+
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

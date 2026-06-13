@@ -16,5 +16,36 @@ Thumbs.db
 # Kotlin compile cache
 .kotlin/
 
-# Temporary
+# Android local config (SDK paths — device-specific)
+local.properties
+
+# Wallet data — NUNCA versionar
+wallet.json
+wallet*.json
+wallet*.txt
+keychain_state.txt
+receive_index.txt
+
+# Dev artifacts
 change_index.txt
+SESSAO_ATUAL.txt
+*.bkp.txt
+*.bkp2.txt
+*.zip
+src/main/java/Bkp/
+src/main/java/Main.bkp.txt
+src/main/java/Main.bkp2.txt
+src/main/java/Main.2.txt
+src/main/java/com/pokewallet/crypto/KeyDerivation.bkp.txt
+src/main/java/com/pokewallet/crypto/Psbt.bkp.txt
+src/main/java/com/pokewallet/crypto/Secp256k1.bkp.txt
+src/main/java/com/pokewallet/crypto/SighashCalculator.bkp.txt
+src/main/java/com/pokewallet/crypto/WalletInit.bkp.txt
+src/main/java/com/pokewallet/crypto/WalletUtxoIndex.bkp.txt
+src/main/java/com/pokewallet/crypto/PsbtTaproot.finalize()
+src/main/java/com/pokewallet/crypto/teste*.txt
+src/main/java/com/pokewallet/crypto/testes*.txt
+src/main/java/com/pokewallet/crypto/teste btc core.txt
+src/main/java/com/pokewallet/crypto/teste.bat
+src/main/java/teste999.txt
+src/main/java/com/pokewallet/crypto/Secp256k1.kt.txt

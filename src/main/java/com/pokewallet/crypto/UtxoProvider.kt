@@ -1,7 +1,7 @@
 package com.pokewallet.crypto
 
-import java.util.HexFormat
 import org.json.JSONArray
+import java.util.HexFormat
 
 /**
  * UtxoProvider
@@ -13,26 +13,41 @@ import org.json.JSONArray
  * - NÃO faz coin selection
  * - NÃO faz validação criptográfica
  * - NÃO conhece chaves privadas
+ * - NÃO interpreta derivação HD
  */
 object UtxoProvider {
 
     /**
-     * Carrega UTXOs spendable da wallet ativa no Bitcoin Core.
+     * Carrega UTXOs spendable da wallet indicada no Bitcoin Core.
      *
      * Retorna UTXOs no formato interno da wallet,
-     * prontos para coin selection.
+     * prontos para coin selection e planejamento de transação.
      */
-    fun loadFromBitcoinCore(): List<Utxo> {
+    fun loadFromBitcoinCore(wallet: WalletData): List<Utxo> {
 
-        val json = BitcoinCli.listUnspent()
-        val array = JSONArray(json)
+        // ---------------------------------------------
+        // bitcoin-cli wallet-scoped (fonte da verdade)
+        // ---------------------------------------------
+        val cli = BitcoinCli(wallet.walletName)
+
+        // Já retorna JSONArray — NÃO embrulhar novamente
+        val array: JSONArray = cli.listUnspent(
+            minConf = 0,
+            maxConf = 9999999,
+            includeUnsafe = true
+        )
 
         val utxos = mutableListOf<Utxo>()
+        val hex = HexFormat.of()
 
+        // ---------------------------------------------
+        // Conversão para modelo interno
+        // ---------------------------------------------
         for (i in 0 until array.length()) {
+
             val obj = array.getJSONObject(i)
 
-            // Ignora UTXOs não spendable (watch-only sem chave, por exemplo)
+            // Ignora UTXOs não spendable
             if (obj.has("spendable") && !obj.getBoolean("spendable")) {
                 continue
             }
@@ -40,28 +55,25 @@ object UtxoProvider {
             val amountBtc = obj.getDouble("amount")
             if (amountBtc <= 0.0) continue
 
-            val txidLE = HexFormat.of()
-                .parseHex(obj.getString("txid"))
-                .reversedArray()
+            val txidLE =
+                hex.parseHex(obj.getString("txid"))
+                    .reversedArray()
 
             val vout = obj.getInt("vout")
-
-            val valueSats = (amountBtc * 100_000_000L).toLong()
+            val valueSats =
+                (amountBtc * 100_000_000L).toLong()
 
             val scriptPubKey =
-                HexFormat.of().parseHex(obj.getString("scriptPubKey"))
+                hex.parseHex(obj.getString("scriptPubKey"))
 
-            utxos.add(
-                Utxo(
-                    txid = txidLE,
-                    vout = vout,
-                    value = valueSats,
-                    scriptPubKey = scriptPubKey
-                )
+            utxos += Utxo(
+                txid = txidLE,
+                vout = vout,
+                value = valueSats,
+                scriptPubKey = scriptPubKey
             )
         }
 
         return utxos
     }
 }
-

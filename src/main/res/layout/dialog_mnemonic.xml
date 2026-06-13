@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/card_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="⚠️ PASSO CRÍTICO"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@color/error_red"
+            android:gravity="center"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Esta é a etapa mais importante.\nSem essas informações, seus fundos são IRRECUPERÁVEIS — nem nós podemos ajudar."
+            android:textSize="14sp"
+            android:textColor="@color/text_primary"
+            android:gravity="center"
+            android:layout_marginBottom="20dp" />
+
+        <!-- Mnemonic -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔑  24 PALAVRAS (MNEMONIC)"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_secondary"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="8dp" />
+
+        <!-- 2-column mnemonic grid (populated in code) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="@color/bg_dark"
+            android:padding="12dp"
+            android:layout_marginBottom="20dp">
+
+            <LinearLayout
+                android:id="@+id/col_mnemonic_left"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginEnd="8dp" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="@color/divider" />
+
+            <LinearLayout
+                android:id="@+id/col_mnemonic_right"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="8dp" />
+
+        </LinearLayout>
+
+        <!-- Pokémon passphrase -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🐾  POKÉMON PASSPHRASE"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_secondary"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tv_passphrase"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textIsSelectable="true"
+            android:textColor="@color/primary_red"
+            android:background="@color/bg_dark"
+            android:padding="14dp"
+            android:layout_marginBottom="24dp"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="✍️  Anote offline — papel e caneta.\nNUNCA tire print ou foto."
+            android:textSize="13sp"
+            android:textColor="@color/text_secondary"
+            android:gravity="center"
+            android:layout_marginBottom="20dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_confirm_mnemonic"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="@string/i_noted_my_words"
+            android:textStyle="bold"
+            android:textColor="@color/bg_dark"
+            app:backgroundTint="@color/accent_yellow"
+            app:cornerRadius="12dp" />
+
+    </LinearLayout>
+</ScrollView>

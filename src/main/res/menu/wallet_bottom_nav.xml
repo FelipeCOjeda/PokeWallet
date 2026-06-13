@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_base"
+        android:icon="@android:drawable/ic_menu_compass"
+        android:title="Base" />
+    <item
+        android:id="@+id/nav_receive"
+        android:icon="@android:drawable/ic_menu_add"
+        android:title="Receber" />
+    <item
+        android:id="@+id/nav_send"
+        android:icon="@android:drawable/ic_menu_send"
+        android:title="Enviar" />
+    <item
+        android:id="@+id/nav_bag"
+        android:icon="@android:drawable/ic_menu_manage"
+        android:title="Mochila" />
+</menu>

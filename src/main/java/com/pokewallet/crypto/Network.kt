@@ -5,5 +5,7 @@ enum class Network(
     val coinType: Int
 ) {
     MAINNET("bc", 0),
-    TESTNET("tb", 1)
+    TESTNET("tb", 1),
+    REGTEST("bcrt", 1)
 }
+

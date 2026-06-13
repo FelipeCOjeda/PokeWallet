@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/card_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🛡 VERIFICAÇÃO DE SEGURANÇA"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            android:gravity="center"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Prove que você anotou suas palavras.\nSem isso, sua wallet não ficará acessível."
+            android:textSize="13sp"
+            android:textColor="@color/text_secondary"
+            android:gravity="center"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Palavra 1 -->
+        <TextView
+            android:id="@+id/tv_word1_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Qual é a palavra #4?"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="8dp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_marginBottom="20dp"
+            app:boxStrokeColor="@color/divider"
+            app:hintTextColor="@color/text_secondary">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_word1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary"
+                android:singleLine="true"
+                android:fontFamily="monospace"
+                android:backgroundTint="@color/card_dark" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Palavra 2 -->
+        <TextView
+            android:id="@+id/tv_word2_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Qual é a palavra #9?"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="8dp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_marginBottom="20dp"
+            app:boxStrokeColor="@color/divider"
+            app:hintTextColor="@color/text_secondary">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_word2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary"
+                android:singleLine="true"
+                android:fontFamily="monospace" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Pokémon passphrase -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Qual é o seu Pokémon?"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="8dp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="ex: pokemon:125:Electabuzz"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_marginBottom="16dp"
+            app:boxStrokeColor="@color/divider"
+            app:hintTextColor="@color/text_secondary">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_pokemon"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary"
+                android:singleLine="true"
+                android:fontFamily="monospace" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Erro -->
+        <TextView
+            android:id="@+id/tv_verify_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:textSize="13sp"
+            android:textColor="@color/error_red"
+            android:gravity="center"
+            android:visibility="gone" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_verify_confirm"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Confirmar e Acessar Wallet"
+            android:textStyle="bold"
+            android:textColor="@color/bg_dark"
+            app:backgroundTint="@color/green_status"
+            app:cornerRadius="12dp" />
+
+    </LinearLayout>
+</ScrollView>

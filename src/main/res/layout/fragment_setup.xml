@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_dark"
+    android:gravity="center_horizontal"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="56dp"
+        android:text="⚡"
+        android:textSize="48sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="PokéWallet"
+        android:textSize="32sp"
+        android:textStyle="bold"
+        android:textColor="@color/accent_yellow"
+        android:fontFamily="monospace" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Bitcoin · Autocustódia"
+        android:textSize="13sp"
+        android:textColor="@color/text_secondary" />
+
+    <!-- Card de boas-vindas -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        app:cardBackgroundColor="@color/card_dark"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Comece sua jornada soberana."
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Crie ou restaure uma wallet Bitcoin sem custódia."
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="16dp"
+                android:gravity="center_vertical">
+
+                <View
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:background="@drawable/circle_green" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="MAINNET"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/green_status" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Botões -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_create_wallet"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_marginTop="24dp"
+        android:text="@string/new_journey"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="@color/bg_dark"
+        app:backgroundTint="@color/accent_yellow"
+        app:cornerRadius="12dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_restore_wallet"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_marginTop="12dp"
+        android:text="@string/restore_wallet"
+        android:textSize="15sp"
+        android:textColor="@color/text_secondary"
+        app:strokeColor="@color/divider"
+        app:cornerRadius="12dp" />
+
+    <!-- Loading -->
+    <ProgressBar
+        android:id="@+id/progress_setup"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:indeterminateTint="@color/accent_yellow"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tv_setup_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Gerando sua wallet…"
+        android:textSize="13sp"
+        android:textColor="@color/text_secondary"
+        android:visibility="gone" />
+
+    <!-- Erro -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/card_error"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="#2A0A0A"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp">
+
+        <TextView
+            android:id="@+id/tv_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="16dp"
+            android:textSize="13sp"
+            android:textColor="@color/error_red" />
+
+    </androidx.cardview.widget.CardView>
+
+    <!-- Aviso de soberania -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:text="@string/sovereignty_warning"
+        android:textSize="12sp"
+        android:textColor="@color/text_secondary"
+        android:gravity="center"
+        android:alpha="0.7" />
+
+</LinearLayout>

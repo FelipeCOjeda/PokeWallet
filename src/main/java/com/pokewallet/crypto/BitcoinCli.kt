@@ -1,83 +1,135 @@
 package com.pokewallet.crypto
 
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
 /**
- * BitcoinCli
+ * Wrapper canônico e wallet-scoped para bitcoin-cli.
  *
- * Camada mínima de integração com o Bitcoin Core via bitcoin-cli.
- * Responsável apenas por executar comandos e devolver texto bruto.
- *
- * NÃO faz parsing
- * NÃO conhece JSON
- * NÃO conhece lógica de wallet
+ * REGRAS IMUTÁVEIS:
+ * - Toda chamada é feita com -rpcwallet
+ * - Não existe "wallet padrão"
+ * - Erros do Core viram exceção explícita
  */
-object BitcoinCli {
+class BitcoinCli(private val walletName: String) {
 
-    private const val NETWORK = "-regtest"
-    private const val WALLET = "pokewallet"
+    init {
+        require(walletName.isNotBlank()) {
+            "walletName não pode ser vazio"
+        }
+    }
 
-    /**
-     * Executa `bitcoin-cli listunspent` para a wallet configurada
-     * e retorna o output bruto (JSON).
-     *
-     * Falha explicitamente se o retorno não for um JSON array.
-     */
-    fun listUnspent(): String {
+    // -------------------------------------------------
+    // Execução de comando
+    // -------------------------------------------------
+    private fun runCli(args: List<String>): String {
 
-        val process = ProcessBuilder(
+        val cmd = mutableListOf(
             "bitcoin-cli",
-            NETWORK,
-            "-rpcwallet=$WALLET",
-            "listunspent"
-        )
+            "-regtest",
+            "-rpcwallet=$walletName"
+        ).apply {
+            addAll(args)
+        }
+
+        val process = ProcessBuilder(cmd)
             .redirectErrorStream(true)
             .start()
 
-        val reader = BufferedReader(InputStreamReader(process.inputStream))
-        val output = reader.readText()
+        val output = StringBuilder()
 
-        process.waitFor()
-
-        require(output.isNotBlank()) {
-            "bitcoin-cli listunspent retornou vazio"
+        BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
+            reader.lines().forEach { output.appendLine(it) }
         }
 
-        require(output.trim().startsWith("[")) {
-            "bitcoin-cli listunspent não retornou JSON array:\n$output"
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            throw IllegalArgumentException(
+                "bitcoin-cli falhou (exit=$exitCode):\n${output}"
+            )
         }
 
-        return output
+        return output.toString().trim()
     }
 
-    /**
-     * Executa `bitcoin-cli importdescriptors` com o JSON fornecido.
-     *
-     * Recebe o payload pronto (string),
-     * não constrói descriptors,
-     * não valida conteúdo semântico.
-     */
-    fun importDescriptors(descriptorsJson: String) {
+    // -------------------------------------------------
+    // RPC genérico
+    // -------------------------------------------------
+    fun call(method: String, params: List<Any> = emptyList()): Any {
 
-        val process = ProcessBuilder(
-            "bitcoin-cli",
-            NETWORK,
-            "-rpcwallet=$WALLET",
-            "importdescriptors",
-            descriptorsJson
+        val jsonParams = params.joinToString(
+            prefix = "[",
+            postfix = "]"
+        ) { p ->
+            when (p) {
+                is String -> "\"$p\""
+                else -> p.toString()
+            }
+        }
+
+        val raw = runCli(
+            listOf(method) +
+                if (params.isNotEmpty()) listOf(jsonParams) else emptyList()
         )
-            .redirectErrorStream(true)
-            .start()
 
-        val reader = BufferedReader(InputStreamReader(process.inputStream))
-        val output = reader.readText()
-
-        process.waitFor()
-
-        require(process.exitValue() == 0) {
-            "Erro ao executar importdescriptors:\n$output"
-        }
+        return Json.parse(raw)
     }
+
+    // -------------------------------------------------
+    // Helpers específicos
+    // -------------------------------------------------
+    fun listUnspent(
+        minConf: Int = 0,
+        maxConf: Int = 9999999,
+        includeUnsafe: Boolean = true
+    ): JSONArray {
+
+        val result = call(
+            "listunspent",
+            listOf(
+                minConf,
+                maxConf,
+                emptyList<String>(),
+                includeUnsafe
+            )
+        )
+
+        return result as JSONArray
+    }
+
+    fun getBalance(): Double =
+        call("getbalance") as Double
+
+    fun getNewAddress(): String =
+        call("getnewaddress") as String
+
+    fun sendToAddress(
+        address: String,
+        amountBtc: Double
+    ): String =
+        call(
+            "sendtoaddress",
+            listOf(address, amountBtc)
+        ) as String
 }
 
+/**
+ * JSON helper minimalista.
+ * Evita dependência pesada de mapper.
+ */
+private object Json {
+
+    fun parse(raw: String): Any =
+        when {
+            raw.startsWith("{") -> JSONObject(raw)
+            raw.startsWith("[") -> JSONArray(raw)
+            raw == "true"       -> true
+            raw == "false"      -> false
+            raw.matches(Regex("-?\\d+(\\.\\d+)?")) ->
+                if (raw.contains(".")) raw.toDouble() else raw.toLong()
+            else -> raw.trim('"')
+        }
+}

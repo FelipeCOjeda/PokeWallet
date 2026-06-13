@@ -175,8 +175,10 @@ object Secp256k1 {
     }
 
     private fun encodeDerInt(v: BigInteger): ByteArray {
-        var b = v.toByteArray()
-        if (b[0] >= 0x80.toByte()) b = byteArrayOf(0x00) + b
+        // BigInteger.toByteArray() is already canonical two's complement:
+        // it prepends 0x00 only when the MSB of the minimal representation is 1
+        // (to indicate positive). Adding another 0x00 produces non-canonical DER.
+        val b = v.toByteArray()
         return byteArrayOf(0x02, b.size.toByte()) + b
     }
 

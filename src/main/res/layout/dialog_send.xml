@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/card_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="28dp">
+
+        <!-- Título -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="💸  Enviar Bitcoin"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="28dp" />
+
+        <!-- Label Endereço -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ENDEREÇO"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.15"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Endereço + botão QR -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="28dp">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="@string/destination_address"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                app:boxStrokeColor="@color/divider"
+                app:hintTextColor="@color/text_secondary">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_address"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text"
+                    android:textColor="@color/text_primary"
+                    android:singleLine="true"
+                    android:fontFamily="monospace" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_scan_qr"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="10dp"
+                android:text="@string/scan_qr"
+                android:textStyle="bold"
+                android:textColor="@color/accent_yellow"
+                android:textSize="10sp"
+                app:strokeColor="@color/accent_yellow"
+                app:cornerRadius="12dp" />
+
+        </LinearLayout>
+
+        <!-- Label Moeda -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/currency_label"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.15"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="10dp" />
+
+        <!-- Chips de moeda -->
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chip_group_currency"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:singleLine="true"
+            app:singleSelection="true"
+            app:selectionRequired="true"
+            android:layout_marginBottom="28dp">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_sats"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Sats"
+                android:checked="true" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_btc"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="BTC" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_usd"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="USD" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_brl"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="BRL" />
+
+        </com.google.android.material.chip.ChipGroup>
+
+        <!-- Label Valor -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="VALOR"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.15"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Campo de valor -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/til_amount"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/amount_sats"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_marginBottom="10dp"
+            app:boxStrokeColor="@color/divider"
+            app:hintTextColor="@color/text_secondary">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_amount"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number"
+                android:textColor="@color/text_primary"
+                android:singleLine="true" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Conversão em tempo real -->
+        <TextView
+            android:id="@+id/tv_conversion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="13sp"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="20dp"
+            android:visibility="gone" />
+
+        <!-- Sweep -->
+        <CheckBox
+            android:id="@+id/cb_sweep"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/sweep_all"
+            android:textColor="@color/text_secondary"
+            android:buttonTint="@color/bitcoin_orange"
+            android:layout_marginBottom="28dp" />
+
+        <!-- Progresso e erro -->
+        <ProgressBar
+            android:id="@+id/progress_send"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:indeterminateTint="@color/accent_yellow"
+            android:layout_marginBottom="12dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tv_send_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/error_red"
+            android:textSize="13sp"
+            android:layout_marginBottom="12dp"
+            android:visibility="gone" />
+
+        <!-- Botões -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_cancel_send"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:text="@string/cancel"
+                android:textColor="@color/text_secondary"
+                app:strokeColor="@color/divider"
+                app:cornerRadius="12dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_confirm_send"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:text="@string/send"
+                android:textStyle="bold"
+                android:textColor="@color/bg_dark"
+                app:backgroundTint="@color/bitcoin_orange"
+                app:cornerRadius="12dp" />
+
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

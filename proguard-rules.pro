@@ -1,0 +1,4 @@
+-keep class org.bouncycastle.** { *; }
+-keep class com.pokewallet.crypto.** { *; }
+-dontwarn org.bouncycastle.**
+-dontwarn com.fasterxml.jackson.**
