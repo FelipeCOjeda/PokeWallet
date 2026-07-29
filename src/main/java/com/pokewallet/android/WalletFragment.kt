@@ -104,31 +104,7 @@ class WalletFragment : Fragment() {
         btnSend.setOnClickListener { showSendDialog() }
         btnForget.setOnClickListener { confirmForget() }
 
-        fun refreshThemeButtons() {
-            val dark = ThemePrefs.isDarkMode(requireContext())
-            btnThemeLight.setBackgroundResource(
-                if (!dark) R.drawable.bg_gameboy_button_solid else R.drawable.bg_gameboy_button_outline)
-            btnThemeLight.backgroundTintList =
-                if (!dark) ContextCompat.getColorStateList(requireContext(), R.color.accent_yellow) else null
-            btnThemeDark.setBackgroundResource(
-                if (dark) R.drawable.bg_gameboy_button_solid else R.drawable.bg_gameboy_button_outline)
-            btnThemeDark.backgroundTintList =
-                if (dark) ContextCompat.getColorStateList(requireContext(), R.color.accent_yellow) else null
-        }
-        refreshThemeButtons()
-
-        btnThemeLight.setOnClickListener {
-            if (ThemePrefs.isDarkMode(requireContext())) {
-                ThemePrefs.setDarkMode(requireContext(), false)
-                requireActivity().recreate()
-            }
-        }
-        btnThemeDark.setOnClickListener {
-            if (!ThemePrefs.isDarkMode(requireContext())) {
-                ThemePrefs.setDarkMode(requireContext(), true)
-                requireActivity().recreate()
-            }
-        }
+        ThemePrefs.bindToggle(requireActivity(), btnThemeLight, btnThemeDark)
 
         val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 

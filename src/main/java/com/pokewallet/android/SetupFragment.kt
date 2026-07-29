@@ -49,6 +49,10 @@ class SetupFragment : Fragment() {
         val tvStatus   = view.findViewById<TextView>(R.id.tv_setup_status)
         val cardError  = view.findViewById<View>(R.id.card_error)
         val tvError    = view.findViewById<TextView>(R.id.tv_error)
+        val btnThemeLight = view.findViewById<MaterialButton>(R.id.btn_theme_light_setup)
+        val btnThemeDark  = view.findViewById<MaterialButton>(R.id.btn_theme_dark_setup)
+
+        ThemePrefs.bindToggle(requireActivity(), btnThemeLight, btnThemeDark)
 
         btnCreate.setOnClickListener {
             showPassphraseChoiceDialog()
