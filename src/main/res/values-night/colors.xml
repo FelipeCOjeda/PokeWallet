@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modo escuro (alternado manualmente pelo toggle na Mochila via
+     AppCompatDelegate.setDefaultNightMode — não depende do tema do
+     sistema). Mesmos nomes de cor do values/colors.xml, valores
+     invertidos: tela preta, fonte/borda branca. -->
+<resources>
+    <color name="gb_screen">#0A0A0A</color>
+    <color name="gb_screen_alt">#161616</color>
+    <color name="gb_border">#F5F5F0</color>
+    <color name="gb_border_soft">#B8B8B0</color>
+</resources>

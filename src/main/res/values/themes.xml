@@ -5,23 +5,55 @@
         <item name="colorPrimaryDark">@color/primary_red_dark</item>
         <item name="colorAccent">@color/accent_yellow</item>
         <item name="colorError">@color/error_red</item>
-        <item name="android:windowBackground">@color/bg_dark</item>
-        <item name="android:statusBarColor">@color/card_dark</item>
-        <item name="android:navigationBarColor">@color/card_dark</item>
-        <item name="android:textColorPrimary">@color/text_primary</item>
-        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:windowBackground">@color/gb_screen</item>
+        <item name="android:statusBarColor">@color/gb_border</item>
+        <item name="android:navigationBarColor">@color/gb_border</item>
+        <item name="android:textColorPrimary">@color/gb_border</item>
+        <item name="android:textColorSecondary">@color/gb_border_soft</item>
         <item name="alertDialogTheme">@style/Theme.PokéWallet.Dialog</item>
     </style>
 
     <style name="Theme.PokéWallet.Dialog" parent="Theme.MaterialComponents.Dialog">
         <item name="colorPrimary">@color/primary_red</item>
-        <item name="android:windowBackground">@color/card_dark</item>
-        <item name="android:textColorPrimary">@color/text_primary</item>
-        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:windowBackground">@color/gb_screen</item>
+        <item name="android:textColorPrimary">@color/gb_border</item>
+        <item name="android:textColorSecondary">@color/gb_border_soft</item>
     </style>
 
     <style name="CardStyle" parent="">
         <item name="android:background">@color/card_dark</item>
         <item name="android:padding">20dp</item>
+    </style>
+
+    <!-- Estilo Game Boy 1a geração: caixa de "tela" com borda dupla e
+         cantos circulares (ver layout/menu.jpg), fonte pixelada Press
+         Start 2P em títulos/labels/botões. Cores de destaque
+         (vermelho/amarelo) mantidas — ver decisão "híbrida" no
+         SESSAO_ATUAL.txt. -->
+    <style name="Gameboy.Title" parent="">
+        <item name="android:fontFamily">@font/press_start_2p</item>
+        <item name="android:textColor">@color/gb_border</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="Gameboy.Label" parent="">
+        <item name="android:fontFamily">@font/press_start_2p</item>
+        <item name="android:textColor">@color/gb_border_soft</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="Gameboy.Button" parent="Widget.MaterialComponents.Button">
+        <item name="android:background">@drawable/bg_gameboy_button_solid</item>
+        <item name="android:fontFamily">@font/press_start_2p</item>
+        <item name="android:textColor">@color/gb_border</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="cornerRadius">0dp</item>
+        <item name="elevation">0dp</item>
+        <item name="rippleColor">@color/gb_border_soft</item>
+    </style>
+
+    <style name="Gameboy.Button.Outline">
+        <item name="android:background">@drawable/bg_gameboy_button_outline</item>
     </style>
 </resources>

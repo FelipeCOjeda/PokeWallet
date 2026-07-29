@@ -4,6 +4,7 @@ import com.pokewallet.Base58
 import com.pokewallet.crypto.AddressBuilder
 import com.pokewallet.crypto.Hashes
 import com.pokewallet.crypto.Network
+import com.pokewallet.crypto.Secp256k1
 import org.bouncycastle.crypto.ec.CustomNamedCurves
 import java.math.BigInteger
 import java.nio.ByteBuffer
@@ -110,6 +111,30 @@ object XpubAddressDeriver {
         val indexKey   = derivePublicChild(chainKey, index)
         val pubKeyHash = Hashes.hash160(indexKey.pubKey)
         return AddressBuilder.p2wpkh(pubKeyHash, network)
+    }
+
+    /**
+     * Deriva endereço P2TR (BIP86 / bc1p) a partir do xpub da conta —
+     * watch-only, sem chave privada. Aplica o tweak Taproot (BIP341)
+     * key-path direto sobre o ponto público.
+     *
+     * @param xpub      account-level xpub (m/86'/coin'/0')
+     * @param chain     0 = externo (recebimento), 1 = interno (troco)
+     * @param index     índice do endereço (0, 1, 2, ...)
+     * @param network   MAINNET, TESTNET ou REGTEST
+     */
+    fun p2trAddress(
+        xpub: String,
+        chain: Int,
+        index: Int,
+        network: Network
+    ): String {
+        val accountKey = decodeXpub(xpub)
+        val chainKey   = derivePublicChild(accountKey, chain)
+        val indexKey   = derivePublicChild(chainKey, index)
+        val xOnly      = indexKey.pubKey.copyOfRange(1, 33)
+        val outputKey  = Secp256k1.taprootOutputKeyFromInternalXOnly(xOnly)
+        return AddressBuilder.p2tr(outputKey, network)
     }
 
     // ── Utilitários ───────────────────────────────────────

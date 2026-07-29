@@ -4,20 +4,21 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/card_dark">
+    android:background="@color/gb_screen">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
+        android:background="@drawable/bg_gameboy_box"
         android:padding="24dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="⚠️ PASSO CRÍTICO"
-            android:textSize="20sp"
-            android:textStyle="bold"
+            android:textSize="14sp"
+            style="@style/Gameboy.Title"
             android:textColor="@color/error_red"
             android:gravity="center"
             android:layout_marginBottom="8dp" />
@@ -27,7 +28,7 @@
             android:layout_height="wrap_content"
             android:text="Esta é a etapa mais importante.\nSem essas informações, seus fundos são IRRECUPERÁVEIS — nem nós podemos ajudar."
             android:textSize="14sp"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/gb_border"
             android:gravity="center"
             android:layout_marginBottom="20dp" />
 
@@ -35,11 +36,9 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="🔑  24 PALAVRAS (MNEMONIC)"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:textColor="@color/text_secondary"
-            android:letterSpacing="0.1"
+            android:text="🔑 24 PALAVRAS (MNEMONIC)"
+            android:textSize="10sp"
+            style="@style/Gameboy.Label"
             android:layout_marginBottom="8dp" />
 
         <!-- 2-column mnemonic grid (populated in code) -->
@@ -62,7 +61,7 @@
             <View
                 android:layout_width="1dp"
                 android:layout_height="match_parent"
-                android:background="@color/divider" />
+                android:background="@color/gb_border_soft" />
 
             <LinearLayout
                 android:id="@+id/col_mnemonic_right"
@@ -74,48 +73,77 @@
 
         </LinearLayout>
 
-        <!-- Pokémon passphrase -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🐾  POKÉMON PASSPHRASE"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:textColor="@color/text_secondary"
-            android:letterSpacing="0.1"
-            android:layout_marginBottom="8dp" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_copy_mnemonic"
+            style="@style/Gameboy.Button.Outline"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="📋 Copiar todas as palavras"
+            android:textSize="10sp"
+            android:layout_marginBottom="20dp" />
 
-        <TextView
-            android:id="@+id/tv_passphrase"
+        <!-- Passphrase (Pokémon ou personalizada — escondido se o modo for "sem passphrase") -->
+        <LinearLayout
+            android:id="@+id/group_mnemonic_passphrase"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:textIsSelectable="true"
-            android:textColor="@color/primary_red"
-            android:background="@color/bg_dark"
-            android:padding="14dp"
-            android:layout_marginBottom="24dp"
-            android:fontFamily="monospace" />
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tv_passphrase_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🐾 POKÉMON PASSPHRASE"
+                android:textSize="10sp"
+                style="@style/Gameboy.Label"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Sprite do Pokémon sorteado (só quando o modo é Pokémon) -->
+            <ImageView
+                android:id="@+id/img_pokemon_sprite"
+                android:layout_width="96dp"
+                android:layout_height="96dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="8dp"
+                android:scaleType="fitCenter"
+                android:background="@color/bg_dark"
+                android:padding="8dp"
+                android:visibility="gone"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:id="@+id/tv_passphrase"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textIsSelectable="true"
+                android:textColor="@color/primary_red"
+                android:background="@color/bg_dark"
+                android:padding="14dp"
+                android:layout_marginBottom="24dp"
+                android:fontFamily="monospace" />
+
+        </LinearLayout>
 
         <TextView
+            android:id="@+id/tv_mnemonic_reminder"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="✍️  Anote offline — papel e caneta.\nNUNCA tire print ou foto."
             android:textSize="13sp"
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/gb_border_soft"
             android:gravity="center"
             android:layout_marginBottom="20dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_confirm_mnemonic"
+            style="@style/Gameboy.Button"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:text="@string/i_noted_my_words"
-            android:textStyle="bold"
-            android:textColor="@color/bg_dark"
-            app:backgroundTint="@color/accent_yellow"
-            app:cornerRadius="12dp" />
+            android:textSize="11sp"
+            app:backgroundTint="@color/accent_yellow" />
 
     </LinearLayout>
 </ScrollView>

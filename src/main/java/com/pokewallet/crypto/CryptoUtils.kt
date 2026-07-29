@@ -12,8 +12,11 @@ object CryptoUtils {
     private val secureRandom = SecureRandom()
 
     /** 256 bits de entropia (32 bytes) */
-    fun randomEntropy256(): ByteArray {
-        val bytes = ByteArray(32)
+    fun randomEntropy256(): ByteArray = randomEntropy(32)
+
+    /** Entropia aleatória do tamanho pedido, em bytes (16 → 12 palavras, 32 → 24 palavras). */
+    fun randomEntropy(byteSize: Int): ByteArray {
+        val bytes = ByteArray(byteSize)
         secureRandom.nextBytes(bytes)
         return bytes
     }

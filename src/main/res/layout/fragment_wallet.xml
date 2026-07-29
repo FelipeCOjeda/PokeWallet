@@ -5,14 +5,14 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/bg_dark">
+    android:background="@color/gb_screen">
 
     <!-- Top bar -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="@color/card_dark"
+        android:background="@color/gb_screen_alt"
         android:padding="16dp"
         android:gravity="center_vertical">
 
@@ -20,11 +20,10 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="⚡ PokéWallet"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="@color/accent_yellow"
-            android:fontFamily="monospace" />
+            android:text="⚡ POKéWALLET"
+            android:textSize="12sp"
+            style="@style/Gameboy.Title"
+            android:textColor="@color/primary_red" />
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -54,6 +53,11 @@
 
     </LinearLayout>
 
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:background="@color/gb_border" />
+
     <!-- Conteúdo scrollável -->
     <ScrollView
         android:id="@+id/scroll_base"
@@ -68,39 +72,31 @@
             android:orientation="vertical">
 
             <!-- Card de saldo -->
-            <androidx.cardview.widget.CardView
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                app:cardBackgroundColor="@color/card_dark"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="0dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
+                android:orientation="vertical"
+                android:background="@drawable/bg_gameboy_box"
+                android:padding="20dp">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="SALDO"
-                        android:textSize="11sp"
-                        android:textStyle="bold"
-                        android:letterSpacing="0.15"
-                        android:textColor="@color/text_secondary" />
+                        android:textSize="10sp"
+                        style="@style/Gameboy.Label" />
 
                     <TextView
                         android:id="@+id/tv_balance_sats"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="— sat"
-                        android:textSize="36sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/accent_yellow"
-                        android:layout_marginTop="4dp"
-                        android:fontFamily="monospace" />
+                        android:textSize="22sp"
+                        android:textColor="@color/gb_border"
+                        android:layout_marginTop="8dp"
+                        android:fontFamily="monospace"
+                        android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/tv_balance_btc"
@@ -108,7 +104,7 @@
                         android:layout_height="wrap_content"
                         android:text="— BTC"
                         android:textSize="14sp"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="@color/gb_border_soft"
                         android:layout_marginTop="2dp"
                         android:fontFamily="monospace" />
 
@@ -138,7 +134,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:textSize="11sp"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="@color/gb_border_soft"
                         android:visibility="gone" />
 
                     <TextView
@@ -147,11 +143,10 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:textSize="11sp"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="@color/gb_border_soft"
                         android:visibility="gone" />
 
-                </LinearLayout>
-            </androidx.cardview.widget.CardView>
+            </LinearLayout>
 
             <!-- Botões Receber / Enviar -->
             <LinearLayout
@@ -162,57 +157,45 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_receive"
+                    style="@style/Gameboy.Button"
                     android:layout_width="0dp"
                     android:layout_height="56dp"
                     android:layout_weight="1"
                     android:layout_marginEnd="6dp"
-                    android:text="📥  Receber"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/bg_dark"
-                    app:backgroundTint="@color/green_status"
-                    app:cornerRadius="12dp" />
+                    android:text="📥 Receber"
+                    android:textSize="11sp"
+                    app:backgroundTint="@color/green_status" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_send"
+                    style="@style/Gameboy.Button"
                     android:layout_width="0dp"
                     android:layout_height="56dp"
                     android:layout_weight="1"
                     android:layout_marginStart="6dp"
-                    android:text="💸  Enviar"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/bg_dark"
-                    app:backgroundTint="@color/bitcoin_orange"
-                    app:cornerRadius="12dp" />
+                    android:text="💸 Enviar"
+                    android:textSize="11sp"
+                    app:backgroundTint="@color/bitcoin_orange" />
 
             </LinearLayout>
 
             <!-- Card Mochila -->
-            <androidx.cardview.widget.CardView
+            <LinearLayout
                 android:id="@+id/card_bag"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
                 android:visibility="gone"
-                app:cardBackgroundColor="@color/card_dark"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="0dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
+                android:orientation="vertical"
+                android:background="@drawable/bg_gameboy_box"
+                android:padding="20dp">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="🎒  MOCHILA"
-                        android:textSize="11sp"
-                        android:textStyle="bold"
-                        android:letterSpacing="0.15"
-                        android:textColor="@color/text_secondary"
+                        android:text="🎒 MOCHILA"
+                        android:textSize="10sp"
+                        style="@style/Gameboy.Label"
                         android:layout_marginBottom="16dp" />
 
                     <TextView
@@ -220,12 +203,12 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textSize="13sp"
-                        android:textColor="@color/text_secondary" />
+                        android:textColor="@color/gb_border_soft" />
 
                     <View
                         android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="@color/divider"
+                        android:layout_height="1.5dp"
+                        android:background="@color/gb_border_soft"
                         android:layout_marginVertical="12dp" />
 
                     <TextView
@@ -238,19 +221,61 @@
 
                     <View
                         android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="@color/divider"
+                        android:layout_height="1.5dp"
+                        android:background="@color/gb_border_soft"
+                        android:layout_marginVertical="12dp" />
+
+                    <!-- Tema claro/escuro -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🖥 TEMA"
+                        android:textSize="10sp"
+                        style="@style/Gameboy.Label"
+                        android:layout_marginBottom="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="12dp">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_theme_light"
+                            style="@style/Gameboy.Button"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="6dp"
+                            android:text="☀ CLARO"
+                            android:textSize="10sp"
+                            app:backgroundTint="@color/accent_yellow" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_theme_dark"
+                            style="@style/Gameboy.Button.Outline"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_weight="1"
+                            android:layout_marginStart="6dp"
+                            android:text="🌙 ESCURO"
+                            android:textSize="10sp" />
+
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1.5dp"
+                        android:background="@color/gb_border_soft"
                         android:layout_marginVertical="12dp" />
 
                     <!-- Histórico de transações -->
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="📋  HISTÓRICO"
-                        android:textSize="11sp"
-                        android:textStyle="bold"
-                        android:letterSpacing="0.15"
-                        android:textColor="@color/text_secondary"
+                        android:text="📋 HISTÓRICO"
+                        android:textSize="10sp"
+                        style="@style/Gameboy.Label"
                         android:layout_marginBottom="8dp" />
 
                     <LinearLayout
@@ -262,33 +287,29 @@
 
                     <View
                         android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="@color/divider"
+                        android:layout_height="1.5dp"
+                        android:background="@color/gb_border_soft"
                         android:layout_marginVertical="12dp" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_forget"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        style="@style/Gameboy.Button.Outline"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="⚠  Esquecer Wallet"
-                        android:textColor="@color/error_red"
-                        app:strokeColor="@color/error_red"
-                        app:cornerRadius="12dp" />
+                        android:text="⚠ Esquecer Wallet"
+                        android:textSize="10sp"
+                        android:textColor="@color/error_red" />
 
-                </LinearLayout>
-            </androidx.cardview.widget.CardView>
+            </LinearLayout>
 
             <!-- Mensagem de erro -->
-            <androidx.cardview.widget.CardView
+            <LinearLayout
                 android:id="@+id/card_error"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
                 android:visibility="gone"
-                app:cardBackgroundColor="#2A0A0A"
-                app:cardCornerRadius="12dp"
-                app:cardElevation="0dp">
+                android:background="@drawable/bg_gameboy_box">
 
                 <TextView
                     android:id="@+id/tv_error"
@@ -298,19 +319,24 @@
                     android:textSize="13sp"
                     android:textColor="@color/error_red" />
 
-            </androidx.cardview.widget.CardView>
+            </LinearLayout>
 
         </LinearLayout>
     </ScrollView>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:background="@color/gb_border" />
 
     <!-- Bottom Navigation -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottom_nav"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/card_dark"
-        app:itemIconTint="@color/text_secondary"
-        app:itemTextColor="@color/text_secondary"
+        android:background="@color/gb_screen_alt"
+        app:itemIconTint="@color/gb_border_soft"
+        app:itemTextColor="@color/gb_border_soft"
         app:labelVisibilityMode="labeled"
         app:menu="@menu/wallet_bottom_nav" />
 

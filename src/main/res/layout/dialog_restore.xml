@@ -4,22 +4,22 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/card_dark">
+    android:background="@color/gb_screen">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="28dp">
+        android:background="@drawable/bg_gameboy_box"
+        android:padding="24dp">
 
         <!-- Título -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="🔑  Restaurar Wallet"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="@color/text_primary"
+            android:text="🔑 RESTAURAR WALLET"
+            android:textSize="13sp"
+            style="@style/Gameboy.Title"
             android:layout_marginBottom="20dp" />
 
         <!-- Aviso -->
@@ -46,11 +46,9 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="MNEMONIC (24 PALAVRAS)"
+            android:text="MNEMONIC (12 OU 24 PALAVRAS)"
             android:textSize="10sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.15"
-            android:textColor="@color/text_secondary"
+            style="@style/Gameboy.Label"
             android:layout_marginBottom="8dp" />
 
         <com.google.android.material.textfield.TextInputLayout
@@ -59,15 +57,15 @@
             android:hint="palavra1 palavra2 palavra3…"
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_marginBottom="8dp"
-            app:boxStrokeColor="@color/divider"
-            app:hintTextColor="@color/text_secondary">
+            app:boxStrokeColor="@color/gb_border_soft"
+            app:hintTextColor="@color/gb_border_soft">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/et_mnemonic"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="textMultiLine|textNoSuggestions"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/gb_border"
                 android:fontFamily="monospace"
                 android:textSize="13sp"
                 android:minLines="4"
@@ -82,9 +80,9 @@
             android:id="@+id/tv_word_count"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="0 / 24 palavras"
+            android:text="0 palavras"
             android:textSize="12sp"
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/gb_border_soft"
             android:gravity="end"
             android:layout_marginBottom="28dp" />
 
@@ -92,35 +90,41 @@
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="@color/divider"
+            android:background="@color/gb_border_soft"
             android:layout_marginBottom="28dp" />
 
         <!-- Label Passphrase -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="PASSPHRASE POKÉMON"
+            android:text="PASSPHRASE"
             android:textSize="10sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.15"
-            android:textColor="@color/text_secondary"
+            style="@style/Gameboy.Label"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Se sua wallet foi criada sem passphrase, deixe em branco."
+            android:textSize="12sp"
+            android:textColor="@color/gb_border_soft"
             android:layout_marginBottom="8dp" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Ex: pokemon:74:Geodude"
+            android:hint="Ex: pokemon:74:Geodude (ou sua passphrase personalizada)"
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_marginBottom="28dp"
-            app:boxStrokeColor="@color/divider"
-            app:hintTextColor="@color/text_secondary">
+            app:boxStrokeColor="@color/gb_border_soft"
+            app:hintTextColor="@color/gb_border_soft">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/et_passphrase_restore"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="textVisiblePassword"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/gb_border"
                 android:fontFamily="monospace"
                 android:singleLine="true" />
 
@@ -130,7 +134,7 @@
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="@color/divider"
+            android:background="@color/gb_border_soft"
             android:layout_marginBottom="28dp" />
 
         <!-- Label Rede -->
@@ -139,9 +143,7 @@
             android:layout_height="wrap_content"
             android:text="REDE"
             android:textSize="10sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.15"
-            android:textColor="@color/text_secondary"
+            style="@style/Gameboy.Label"
             android:layout_marginBottom="10dp" />
 
         <com.google.android.material.chip.ChipGroup
@@ -167,6 +169,56 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="TESTNET" />
+
+        </com.google.android.material.chip.ChipGroup>
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/gb_border_soft"
+            android:layout_marginBottom="28dp" />
+
+        <!-- Label Tipo de endereço -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TIPO DE ENDEREÇO"
+            android:textSize="10sp"
+            style="@style/Gameboy.Label"
+            android:layout_marginBottom="10dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Escolha o mesmo tipo que a wallet original usava."
+            android:textSize="12sp"
+            android:textColor="@color/gb_border_soft"
+            android:layout_marginBottom="8dp" />
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chip_group_address_type_restore"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:singleLine="true"
+            app:singleSelection="true"
+            app:selectionRequired="true"
+            android:layout_marginBottom="28dp">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_restore_native_segwit"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Native SegWit"
+                android:checked="true" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_restore_taproot"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Taproot" />
 
         </com.google.android.material.chip.ChipGroup>
 
@@ -199,26 +251,23 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_cancel_restore"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                style="@style/Gameboy.Button.Outline"
                 android:layout_width="0dp"
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="8dp"
                 android:text="Cancelar"
-                android:textColor="@color/text_secondary"
-                app:strokeColor="@color/divider"
-                app:cornerRadius="12dp" />
+                android:textSize="12sp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_confirm_restore"
+                style="@style/Gameboy.Button"
                 android:layout_width="0dp"
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:text="Restaurar"
-                android:textStyle="bold"
-                android:textColor="@color/bg_dark"
-                app:backgroundTint="@color/accent_yellow"
-                app:cornerRadius="12dp" />
+                android:textSize="12sp"
+                app:backgroundTint="@color/accent_yellow" />
 
         </LinearLayout>
     </LinearLayout>

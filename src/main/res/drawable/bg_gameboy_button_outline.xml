@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Botão "vazado" estilo Game Boy: mesmo tratamento de borda, fundo da
+     tela em vez de preenchido, usado pra ações secundárias. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/gb_screen" />
+    <stroke android:width="3dp" android:color="@color/gb_border" />
+</shape>

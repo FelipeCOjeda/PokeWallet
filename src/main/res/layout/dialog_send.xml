@@ -4,23 +4,23 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/card_dark">
+    android:background="@color/gb_screen">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="28dp">
+        android:background="@drawable/bg_gameboy_box"
+        android:padding="24dp">
 
         <!-- Título -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="💸  Enviar Bitcoin"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="@color/text_primary"
-            android:layout_marginBottom="28dp" />
+            android:text="💸 ENVIAR BITCOIN"
+            android:textSize="13sp"
+            style="@style/Gameboy.Title"
+            android:layout_marginBottom="24dp" />
 
         <!-- Label Endereço -->
         <TextView
@@ -28,9 +28,7 @@
             android:layout_height="wrap_content"
             android:text="ENDEREÇO"
             android:textSize="10sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.15"
-            android:textColor="@color/text_secondary"
+            style="@style/Gameboy.Label"
             android:layout_marginBottom="8dp" />
 
         <!-- Endereço + botão QR -->
@@ -47,15 +45,15 @@
                 android:layout_weight="1"
                 android:hint="@string/destination_address"
                 style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                app:boxStrokeColor="@color/divider"
-                app:hintTextColor="@color/text_secondary">
+                app:boxStrokeColor="@color/gb_border_soft"
+                app:hintTextColor="@color/gb_border_soft">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/et_address"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:inputType="text"
-                    android:textColor="@color/text_primary"
+                    android:textColor="@color/gb_border"
                     android:singleLine="true"
                     android:fontFamily="monospace" />
 
@@ -82,9 +80,7 @@
             android:layout_height="wrap_content"
             android:text="@string/currency_label"
             android:textSize="10sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.15"
-            android:textColor="@color/text_secondary"
+            style="@style/Gameboy.Label"
             android:layout_marginBottom="10dp" />
 
         <!-- Chips de moeda -->
@@ -134,9 +130,7 @@
             android:layout_height="wrap_content"
             android:text="VALOR"
             android:textSize="10sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.15"
-            android:textColor="@color/text_secondary"
+            style="@style/Gameboy.Label"
             android:layout_marginBottom="8dp" />
 
         <!-- Campo de valor -->
@@ -147,15 +141,15 @@
             android:hint="@string/amount_sats"
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_marginBottom="10dp"
-            app:boxStrokeColor="@color/divider"
-            app:hintTextColor="@color/text_secondary">
+            app:boxStrokeColor="@color/gb_border_soft"
+            app:hintTextColor="@color/gb_border_soft">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/et_amount"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="number"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/gb_border"
                 android:singleLine="true" />
 
         </com.google.android.material.textfield.TextInputLayout>
@@ -166,7 +160,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textSize="13sp"
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/gb_border_soft"
             android:layout_marginBottom="20dp"
             android:visibility="gone" />
 
@@ -176,7 +170,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/sweep_all"
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/gb_border_soft"
             android:buttonTint="@color/bitcoin_orange"
             android:layout_marginBottom="28dp" />
 
@@ -186,9 +180,7 @@
             android:layout_height="wrap_content"
             android:text="@string/send_mode_label"
             android:textSize="10sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.15"
-            android:textColor="@color/text_secondary"
+            style="@style/Gameboy.Label"
             android:layout_marginBottom="10dp" />
 
         <!-- Modo de envio -->
@@ -205,7 +197,7 @@
                 android:layout_height="wrap_content"
                 android:text="@string/send_mode_internet"
                 android:buttonTint="@color/bitcoin_orange"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/gb_border"
                 android:checked="true" />
 
             <RadioButton
@@ -214,7 +206,7 @@
                 android:layout_height="wrap_content"
                 android:text="@string/send_mode_bitchat"
                 android:buttonTint="@color/bitcoin_orange"
-                android:textColor="@color/text_primary" />
+                android:textColor="@color/gb_border" />
 
         </RadioGroup>
 
@@ -224,7 +216,7 @@
             android:layout_height="wrap_content"
             android:text="@string/send_mode_internet_explainer"
             android:textSize="12sp"
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/gb_border_soft"
             android:layout_marginBottom="28dp" />
 
         <!-- Progresso e erro -->
@@ -254,26 +246,23 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_cancel_send"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                style="@style/Gameboy.Button.Outline"
                 android:layout_width="0dp"
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="8dp"
                 android:text="@string/cancel"
-                android:textColor="@color/text_secondary"
-                app:strokeColor="@color/divider"
-                app:cornerRadius="12dp" />
+                android:textSize="12sp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_confirm_send"
+                style="@style/Gameboy.Button"
                 android:layout_width="0dp"
                 android:layout_height="56dp"
                 android:layout_weight="1"
                 android:text="@string/send"
-                android:textStyle="bold"
-                android:textColor="@color/bg_dark"
-                app:backgroundTint="@color/bitcoin_orange"
-                app:cornerRadius="12dp" />
+                android:textSize="12sp"
+                app:backgroundTint="@color/bitcoin_orange" />
 
         </LinearLayout>
     </LinearLayout>

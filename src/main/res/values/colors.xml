@@ -11,4 +11,10 @@
     <color name="bitcoin_orange">#F7931A</color>
     <color name="error_red">#FF4444</color>
     <color name="divider">#2A2D35</color>
+
+    <!-- Game Boy screen palette (usado nas caixas estilo menu de jogo) -->
+    <color name="gb_screen">#E8E8DC</color>
+    <color name="gb_screen_alt">#D6D6C2</color>
+    <color name="gb_border">#101010</color>
+    <color name="gb_border_soft">#3A3A32</color>
 </resources>

@@ -1,6 +1,7 @@
 package com.pokewallet.network
 
 import com.pokewallet.crypto.Network
+import com.pokewallet.crypto.SpendType
 
 /**
  * Varre uma HD wallet via Blockstream API usando BIP44 gap limit.
@@ -88,11 +89,12 @@ object WalletScanner {
     fun scan(
         xpub: String,
         network: Network,
+        spendType: SpendType = SpendType.BIP84,
         gapLimit: Int = GAP_LIMIT_DEFAULT,
         onProgress: ((chain: Int, index: Int, address: String) -> Unit)? = null
     ): ScanResult {
-        val external = scanChain(xpub, network, chain = 0, gapLimit, onProgress)
-        val internal = scanChain(xpub, network, chain = 1, gapLimit, onProgress)
+        val external = scanChain(xpub, network, spendType, chain = 0, gapLimit, onProgress)
+        val internal = scanChain(xpub, network, spendType, chain = 1, gapLimit, onProgress)
 
         val all       = external.scanned + internal.scanned
         val withFunds = all.filter { it.utxos.isNotEmpty() }
@@ -117,6 +119,7 @@ object WalletScanner {
     private fun scanChain(
         xpub: String,
         network: Network,
+        spendType: SpendType,
         chain: Int,
         gapLimit: Int,
         onProgress: ((Int, Int, String) -> Unit)?
@@ -127,7 +130,10 @@ object WalletScanner {
         var lastUsed = -1
 
         while (gap < gapLimit) {
-            val address = XpubAddressDeriver.p2wpkhAddress(xpub, chain, index, network)
+            val address = when (spendType) {
+                SpendType.BIP84 -> XpubAddressDeriver.p2wpkhAddress(xpub, chain, index, network)
+                SpendType.BIP86 -> XpubAddressDeriver.p2trAddress(xpub, chain, index, network)
+            }
             onProgress?.invoke(chain, index, address)
 
             val stats = BlockstreamClient.getAddressStats(address, network)

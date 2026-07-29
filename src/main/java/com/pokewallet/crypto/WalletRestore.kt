@@ -10,8 +10,8 @@ object WalletRestore {
     fun invalidWords(words: List<String>): List<String> =
         words.filter { it.isNotBlank() && it !in wordSet }
 
-    fun run(words: List<String>, passphrase: String, network: Network) {
-        require(words.size == 24) { "São necessárias exatamente 24 palavras." }
+    fun run(words: List<String>, passphrase: String, network: Network, spendType: SpendType = SpendType.BIP84) {
+        require(words.size == 12 || words.size == 24) { "São necessárias exatamente 12 ou 24 palavras." }
 
         val bad = invalidWords(words)
         require(bad.isEmpty()) { "Palavra(s) inválida(s): ${bad.take(3).joinToString(", ")}${if (bad.size > 3) "…" else ""}" }
@@ -23,25 +23,32 @@ object WalletRestore {
         val fingerprintHex = Fingerprint.of(master).toFingerprintHex()
         val walletName     = "pokewallet_$fingerprintHex"
 
+        val purpose = spendType.bipPurpose()
         val accountKey = KeyDerivation.derive(
             seed,
             intArrayOf(
-                KeyDerivation.hardened(84),
+                KeyDerivation.hardened(purpose),
                 KeyDerivation.hardened(network.coinType),
                 KeyDerivation.hardened(0)
             )
         )
 
         val xpub                = XpubEncoder.encode(accountKey, network)
-        val derivationPrefix    = "[$fingerprintHex/84h/${network.coinType}h/0h]$xpub"
-        val externalDescriptor  = "wpkh($derivationPrefix/0/*)"
-        val internalDescriptor  = "wpkh($derivationPrefix/1/*)"
+        val derivationPrefix    = "[$fingerprintHex/${purpose}h/${network.coinType}h/0h]$xpub"
+        val externalDescriptor  = when (spendType) {
+            SpendType.BIP84 -> "wpkh($derivationPrefix/0/*)"
+            SpendType.BIP86 -> "tr($derivationPrefix/0/*)"
+        }
+        val internalDescriptor  = when (spendType) {
+            SpendType.BIP84 -> "wpkh($derivationPrefix/1/*)"
+            SpendType.BIP86 -> "tr($derivationPrefix/1/*)"
+        }
 
         val json = JSONObject()
             .put("version",              2)
             .put("walletName",           walletName)
             .put("network",              network.name)
-            .put("spendType",            SpendType.BIP84.name)
+            .put("spendType",            spendType.name)
             .put("mnemonic",             words.joinToString(" "))
             .put("passphrase",           passphrase)
             .put("fingerprint",          fingerprintHex)
@@ -51,6 +58,7 @@ object WalletRestore {
             .put("nextExternalIndex",    0)
             .put("nextInternalIndex",    0)
             .put("createdAt",            Instant.now().toString())
+            .put("mnemonicVerified",     true)
 
         WalletStorage.saveRaw(json)
     }

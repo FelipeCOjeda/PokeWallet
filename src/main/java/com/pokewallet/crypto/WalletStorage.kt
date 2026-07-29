@@ -50,6 +50,13 @@ object WalletStorage {
             dirty = true
         }
 
+        if (!json.has("mnemonicVerified")) {
+            // wallet.json de antes desse campo existir: trata como não-verificada —
+            // é o lado seguro (pior caso, pede pra confirmar de novo; não trava o acesso).
+            json.put("mnemonicVerified", false)
+            dirty = true
+        }
+
         if (dirty) {
             walletFile.writeBytes(WalletEncryption.encrypt(json.toString(2)))
         }
@@ -65,6 +72,7 @@ object WalletStorage {
             walletName         = json.getString("walletName"),
             mnemonic           = mnemonic,
             passphrase         = json.getString("passphrase"),
+            mnemonicVerified   = json.getBoolean("mnemonicVerified"),
             fingerprint        = fingerprintHex,
             network            = Network.valueOf(json.getString("network")),
             spendType          = SpendType.valueOf(json.getString("spendType")),

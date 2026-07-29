@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Caixa estilo Game Boy 1a geração: fundo "tela", borda dupla preta e um
+     pequeno círculo em cada canto, como as janelas de menu/texto de
+     Pokémon Red/Blue/Yellow (ver layout/menu.jpg). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/gb_screen" />
+        </shape>
+    </item>
+
+    <item android:top="2dp" android:left="2dp" android:right="2dp" android:bottom="2dp">
+        <shape android:shape="rectangle">
+            <stroke android:width="3dp" android:color="@color/gb_border" />
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+
+    <item android:top="7dp" android:left="7dp" android:right="7dp" android:bottom="7dp">
+        <shape android:shape="rectangle">
+            <stroke android:width="1.5dp" android:color="@color/gb_border" />
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+
+    <item android:width="7dp" android:height="7dp" android:gravity="top|left" android:top="0dp" android:left="0dp">
+        <shape android:shape="oval">
+            <solid android:color="@color/gb_border" />
+        </shape>
+    </item>
+    <item android:width="7dp" android:height="7dp" android:gravity="top|right" android:top="0dp" android:right="0dp">
+        <shape android:shape="oval">
+            <solid android:color="@color/gb_border" />
+        </shape>
+    </item>
+    <item android:width="7dp" android:height="7dp" android:gravity="bottom|left" android:bottom="0dp" android:left="0dp">
+        <shape android:shape="oval">
+            <solid android:color="@color/gb_border" />
+        </shape>
+    </item>
+    <item android:width="7dp" android:height="7dp" android:gravity="bottom|right" android:bottom="0dp" android:right="0dp">
+        <shape android:shape="oval">
+            <solid android:color="@color/gb_border" />
+        </shape>
+    </item>
+
+</layer-list>

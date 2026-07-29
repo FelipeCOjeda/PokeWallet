@@ -20,6 +20,7 @@ data class WalletData(
     // -----------------------------
     val mnemonic: List<String>,
     val passphrase: String,
+    val mnemonicVerified: Boolean,
 
     // -----------------------------
     // Identidade BIP32

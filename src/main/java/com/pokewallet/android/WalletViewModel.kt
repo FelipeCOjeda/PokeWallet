@@ -26,7 +26,11 @@ import java.util.Date
 sealed class WalletState {
     object NoWallet : WalletState()
     object Creating : WalletState()
-    data class Created(val mnemonic: String, val passphrase: String) : WalletState()
+    data class Created(
+        val mnemonic: String,
+        val passphrase: String,
+        val passphraseMode: PassphraseMode
+    ) : WalletState()
     object Loading : WalletState()
     data class Loaded(
         val walletName: String,
@@ -114,10 +118,33 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun checkWallet() {
-        if (WalletStorage.exists()) {
-            loadWalletAndStartScan()
-        } else {
+        if (!WalletStorage.exists()) {
             _walletState.value = WalletState.NoWallet
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val wallet = withContext(Dispatchers.IO) { WalletStorage.load() }
+                if (wallet.mnemonicVerified) {
+                    loadWalletAndStartScan()
+                } else {
+                    // Wallet foi criada mas o usuário nunca completou o quiz de
+                    // confirmação (app fechou/matou o processo antes) — retoma o
+                    // fluxo de verificação em vez de liberar acesso à wallet.
+                    val mode = PassphraseMode.fromPersisted(
+                        wallet.raw.optString("passphraseMode"),
+                        wallet.passphrase
+                    )
+                    _walletState.value = WalletState.Created(
+                        mnemonic       = wallet.mnemonic.joinToString(" "),
+                        passphrase     = wallet.passphrase,
+                        passphraseMode = mode
+                    )
+                }
+            } catch (e: Exception) {
+                _walletState.value = WalletState.Error(humanizeError(e))
+            }
         }
     }
 
@@ -208,6 +235,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 WalletScanner.scan(
                     xpub       = xpub,
                     network    = network,
+                    spendType  = wallet.spendType,
                     onProgress = { _, index, _ ->
                         val loaded = _walletState.value as? WalletState.Loaded ?: return@scan
                         _walletState.value = loaded.copy(scanStatus = "Verificando endereço $index…")
@@ -245,15 +273,21 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun createWallet(network: Network = Network.MAINNET) {
+    fun createWallet(
+        network: Network = Network.MAINNET,
+        passphraseMode: PassphraseMode = PassphraseMode.Pokemon,
+        wordCount: Int = 24,
+        spendType: SpendType = SpendType.BIP84
+    ) {
         _walletState.value = WalletState.Creating
         viewModelScope.launch {
             try {
-                withContext(Dispatchers.IO) { WalletInit.run(network) }
+                withContext(Dispatchers.IO) { WalletInit.run(network, passphraseMode, wordCount, spendType) }
                 val wallet = withContext(Dispatchers.IO) { WalletStorage.load() }
                 _walletState.value = WalletState.Created(
-                    mnemonic   = wallet.mnemonic.joinToString(" "),
-                    passphrase = wallet.passphrase
+                    mnemonic       = wallet.mnemonic.joinToString(" "),
+                    passphrase     = wallet.passphrase,
+                    passphraseMode = passphraseMode
                 )
             } catch (e: Exception) {
                 _walletState.value = WalletState.Error(humanizeError(e))
@@ -262,7 +296,19 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onMnemonicConfirmed() {
-        loadWalletAndStartScan()
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val wallet = WalletStorage.load()
+                    wallet.raw.put("mnemonicVerified", true)
+                    WalletStorage.save(wallet)
+                }
+            } catch (_: Exception) {
+                // Se a persistência falhar, a próxima abertura do app volta a pedir a
+                // verificação — chato, mas seguro (não libera acesso sem o flag salvo).
+            }
+            loadWalletAndStartScan()
+        }
     }
 
     fun getReceiveAddress(): Pair<String, Int>? {
@@ -311,12 +357,12 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
     fun resetSendState() { _sendState.value = SendState.Idle }
 
-    fun restoreWallet(words: List<String>, passphrase: String, network: Network) {
+    fun restoreWallet(words: List<String>, passphrase: String, network: Network, spendType: SpendType = SpendType.BIP84) {
         _restoreState.value = RestoreState.Restoring
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    com.pokewallet.crypto.WalletRestore.run(words, passphrase, network)
+                    com.pokewallet.crypto.WalletRestore.run(words, passphrase, network, spendType)
                 }
                 _restoreState.value = RestoreState.Success
                 loadWalletAndStartScan()
@@ -389,7 +435,9 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
         val seed    = SeedDerivation.fromMnemonic(wallet.mnemonic, wallet.passphrase)
 
-        val scanResult = WalletScanner.scan(xpub = xpub, network = network)
+        val spendType = wallet.spendType
+
+        val scanResult = WalletScanner.scan(xpub = xpub, network = network, spendType = spendType)
         if (scanResult.totalSats == 0L) error("Saldo zero — nada para enviar.")
 
         val fees    = BlockstreamClient.getFeeEstimates(network)
@@ -402,12 +450,21 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
         val spendable = mutableListOf<SpendableUtxo>()
         for (addr in scanResult.addressesWithFunds) {
-            val hdKey   = KeyDerivation.bip84(seed, coin = network.coinType, account = 0,
-                change = addr.chain, address = addr.index)
+            val hdKey = when (spendType) {
+                SpendType.BIP84 -> KeyDerivation.bip84(seed, coin = network.coinType, account = 0,
+                    change = addr.chain, address = addr.index)
+                SpendType.BIP86 -> KeyDerivation.bip86(seed, coin = network.coinType, account = 0,
+                    change = addr.chain, address = addr.index)
+            }
             val privKey = hdKey.privateKey
             val pubKey  = Secp256k1.publicKeyFromPrivate(privKey)
-            val pkh     = Hashes.hash160(pubKey)
-            val spk     = byteArrayOf(0x00, 0x14) + pkh
+            val spk = when (spendType) {
+                SpendType.BIP84 -> byteArrayOf(0x00, 0x14) + Hashes.hash160(pubKey)
+                SpendType.BIP86 -> {
+                    val xOnly = Secp256k1.xOnlyPublicKeyFromPrivate(privKey)
+                    byteArrayOf(0x51, 0x20) + Secp256k1.taprootOutputKeyFromInternalXOnly(xOnly)
+                }
+            }
             for (utxo in addr.utxos) {
                 spendable += SpendableUtxo(
                     txidLE       = hexToBytes(utxo.txid).reversedArray(),
@@ -437,27 +494,59 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val txOutputs  = listOf(TxOut(sendAmount, destSpk))
         val unsignedTx = UnsignedTransaction(version = 2, inputs = txInputs, outputs = txOutputs, lockTime = 0L)
 
-        val psbt = Psbt(
-            unsignedTx = unsignedTx,
-            inputs     = MutableList(txInputs.size) { PsbtInput() },
-            outputs    = MutableList(txOutputs.size) { PsbtOutput() }
-        )
+        val (rawTxBytes, txid) = when (spendType) {
 
-        spendable.forEachIndexed { i, s ->
-            val sig = SegwitSigner.sign(
-                unsignedTx   = unsignedTx,
-                inputIndex   = i,
-                utxoValue    = s.valueSats,
-                scriptPubKey = s.scriptPubKey,
-                privateKey   = s.privateKey
-            )
-            psbt.inputs[i].witnessUtxo = TxOut(s.valueSats, s.scriptPubKey)
-            psbt.inputs[i].partialSignatures[s.pubKey] = sig
+            SpendType.BIP84 -> {
+                val psbt = Psbt(
+                    unsignedTx = unsignedTx,
+                    inputs     = MutableList(txInputs.size) { PsbtInput() },
+                    outputs    = MutableList(txOutputs.size) { PsbtOutput() }
+                )
+
+                spendable.forEachIndexed { i, s ->
+                    val sig = SegwitSigner.sign(
+                        unsignedTx   = unsignedTx,
+                        inputIndex   = i,
+                        utxoValue    = s.valueSats,
+                        scriptPubKey = s.scriptPubKey,
+                        privateKey   = s.privateKey
+                    )
+                    psbt.inputs[i].witnessUtxo = TxOut(s.valueSats, s.scriptPubKey)
+                    psbt.inputs[i].partialSignatures[s.pubKey] = sig
+                }
+
+                Pair(psbt.finalize(), psbt.txid())
+            }
+
+            SpendType.BIP86 -> {
+                val psbt = PsbtTaproot(
+                    unsignedTx = unsignedTx,
+                    inputs     = MutableList(txInputs.size) { TaprootPsbtInput() },
+                    outputs    = MutableList(txOutputs.size) { PsbtOutput() }
+                )
+
+                val utxoTxOuts = spendable.map { TxOut(it.valueSats, it.scriptPubKey) }
+
+                spendable.forEachIndexed { i, s ->
+                    psbt.inputs[i].witnessUtxo = TxOut(s.valueSats, s.scriptPubKey)
+
+                    val sighash = TaprootSighashCalculator.calculate(
+                        tx       = unsignedTx,
+                        inputIndex = i,
+                        utxos    = utxoTxOuts
+                    )
+                    val tweakedPrivKey = Secp256k1.taprootTweakPrivateKey(s.privateKey)
+                    psbt.inputs[i].tapKeySig = SchnorrSigner.sign(
+                        msg32     = sighash,
+                        privKey32 = tweakedPrivKey
+                    )
+                }
+
+                Pair(psbt.finalize(), unsignedTx.txid())
+            }
         }
 
-        val rawTxBytes = psbt.finalize()
-        val rawTxHex   = rawTxBytes.joinToString("") { "%02x".format(it) }
-        val txid       = psbt.txid()
+        val rawTxHex = rawTxBytes.joinToString("") { "%02x".format(it) }
 
         return PreparedTx(rawTxHex = rawTxHex, txid = txid, seed = seed, network = network)
     }

@@ -7,7 +7,13 @@ import java.time.Instant
 
 object WalletInit {
 
-    fun run(network: Network = Network.REGTEST) {
+    fun run(
+        network: Network = Network.REGTEST,
+        passphraseMode: PassphraseMode = PassphraseMode.Pokemon,
+        wordCount: Int = 24,
+        spendType: SpendType = SpendType.BIP84
+    ) {
+        require(wordCount == 12 || wordCount == 24) { "wordCount deve ser 12 ou 24" }
 
         println("=== PokeWallet — wallet-init ===\n")
 
@@ -19,17 +25,16 @@ object WalletInit {
         }
 
         // -----------------------------
-        // Configuração base
-        // -----------------------------
-        val spendType = SpendType.BIP84
-
-        // -----------------------------
         // Seed + mnemonic
         // -----------------------------
-        val entropy = CryptoUtils.randomEntropy256()
+        val entropy = CryptoUtils.randomEntropy(if (wordCount == 12) 16 else 32)
         val mnemonicWords = Bip39.generateMnemonic(entropy)
         val mnemonic = mnemonicWords.joinToString(" ")
-        val passphrase = PokemonPassphrase.choose(entropy)
+        val passphrase = when (passphraseMode) {
+            is PassphraseMode.None    -> ""
+            is PassphraseMode.Pokemon -> PokemonPassphrase.choose(entropy)
+            is PassphraseMode.Custom  -> passphraseMode.value
+        }
 
         val seed = SeedDerivation.fromMnemonic(
             mnemonicWords,
@@ -49,12 +54,13 @@ object WalletInit {
         val walletName = "pokewallet_$fingerprintHex"
 
         // -----------------------------
-        // Account key: m/84'/coin'/0'
+        // Account key: m/purpose'/coin'/0' (84=Native SegWit, 86=Taproot)
         // -----------------------------
+        val purpose = spendType.bipPurpose()
         val accountKey = KeyDerivation.derive(
             seed,
             intArrayOf(
-                KeyDerivation.hardened(84),
+                KeyDerivation.hardened(purpose),
                 KeyDerivation.hardened(network.coinType.toInt()),
                 KeyDerivation.hardened(0)
             )
@@ -69,10 +75,16 @@ object WalletInit {
         // Descriptors CANÔNICOS
         // -----------------------------
         val derivationPrefix =
-            "[$fingerprintHex/84h/${network.coinType}h/0h]$xpub"
+            "[$fingerprintHex/${purpose}h/${network.coinType}h/0h]$xpub"
 
-        val externalDescriptor = "wpkh($derivationPrefix/0/*)"
-        val internalDescriptor = "wpkh($derivationPrefix/1/*)"
+        val externalDescriptor = when (spendType) {
+            SpendType.BIP84 -> "wpkh($derivationPrefix/0/*)"
+            SpendType.BIP86 -> "tr($derivationPrefix/0/*)"
+        }
+        val internalDescriptor = when (spendType) {
+            SpendType.BIP84 -> "wpkh($derivationPrefix/1/*)"
+            SpendType.BIP86 -> "tr($derivationPrefix/1/*)"
+        }
 
         // -----------------------------
         // Criação da wallet no Bitcoin Core
@@ -111,6 +123,8 @@ object WalletInit {
             .put("nextExternalIndex", 0)
             .put("nextInternalIndex", 0)
             .put("createdAt", Instant.now().toString())
+            .put("mnemonicVerified", false)
+            .put("passphraseMode", passphraseMode.tag())
 
         WalletStorage.saveRaw(json)
 
@@ -166,8 +180,14 @@ object WalletInit {
         println("XPUB        : $xpub")
 
         println("\n⚠️  ATENÇÃO IMPORTANTE")
-        println("Anote as 24 palavras E o Pokémon da passphrase.")
-        println("Sem isso, NÃO existe recuperação possível.")
+        when (passphraseMode) {
+            is PassphraseMode.None ->
+                println("Anote as 24 palavras. Sem elas, NÃO existe recuperação possível.")
+            is PassphraseMode.Pokemon ->
+                println("Anote as 24 palavras E o Pokémon da passphrase.\nSem isso, NÃO existe recuperação possível.")
+            is PassphraseMode.Custom ->
+                println("Anote as 24 palavras E a passphrase EXATA que você digitou.\nSem isso, NÃO existe recuperação possível.")
+        }
 
         println("\n📄 Arquivo criado: wallet.json")
         println("🚫 NÃO versionar esse arquivo.")

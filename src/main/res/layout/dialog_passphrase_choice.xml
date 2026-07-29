@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/gb_screen">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_gameboy_box"
+        android:padding="24dp">
+
+        <!-- Título -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🔐 PASSPHRASE"
+            android:textSize="13sp"
+            style="@style/Gameboy.Title"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="A passphrase é uma palavra extra opcional. Junto com o mnemonic, ela define sua wallet — mudar qualquer uma das duas gera uma wallet diferente."
+            android:textSize="13sp"
+            android:textColor="@color/gb_border_soft"
+            android:lineSpacingExtra="3dp"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Label Contagem de palavras -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="MNEMONIC"
+            android:textSize="10sp"
+            style="@style/Gameboy.Label"
+            android:layout_marginBottom="10dp" />
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chip_group_word_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:singleLine="true"
+            app:singleSelection="true"
+            app:selectionRequired="true"
+            android:layout_marginBottom="24dp">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_words_12"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="12 palavras" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_words_24"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="24 palavras (recomendado)"
+                android:checked="true" />
+
+        </com.google.android.material.chip.ChipGroup>
+
+        <!-- Label Tipo de endereço -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TIPO DE ENDEREÇO"
+            android:textSize="10sp"
+            style="@style/Gameboy.Label"
+            android:layout_marginBottom="10dp" />
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chip_group_address_type"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:singleLine="true"
+            app:singleSelection="true"
+            app:selectionRequired="true"
+            android:layout_marginBottom="8dp">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_address_native_segwit"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Native SegWit (recomendado)"
+                android:checked="true" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_address_taproot"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Taproot" />
+
+        </com.google.android.material.chip.ChipGroup>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Native SegWit (bc1q...) é o padrão mais compatível. Taproot (bc1p...) é o mais novo, com taxas menores em gastos simples."
+            android:textSize="11sp"
+            android:textColor="@color/gb_border_soft"
+            android:lineSpacingExtra="2dp"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/gb_border_soft"
+            android:layout_marginBottom="24dp" />
+
+        <RadioGroup
+            android:id="@+id/rg_passphrase_mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="8dp">
+
+            <RadioButton
+                android:id="@+id/rb_passphrase_none"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Sem passphrase"
+                android:buttonTint="@color/bitcoin_orange"
+                android:textColor="@color/gb_border"
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Só as 24 palavras protegem a wallet. Mais simples, um pouco menos seguro."
+                android:textSize="12sp"
+                android:textColor="@color/gb_border_soft"
+                android:paddingStart="36dp"
+                android:layout_marginBottom="16dp" />
+
+            <RadioButton
+                android:id="@+id/rb_passphrase_pokemon"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Pokémon (recomendado)"
+                android:buttonTint="@color/bitcoin_orange"
+                android:textColor="@color/gb_border"
+                android:textStyle="bold"
+                android:checked="true"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Um Pokémon é sorteado a partir da sua entropia e mostrado pra você anotar. Nosso padrão de sempre."
+                android:textSize="12sp"
+                android:textColor="@color/gb_border_soft"
+                android:paddingStart="36dp"
+                android:layout_marginBottom="16dp" />
+
+            <RadioButton
+                android:id="@+id/rb_passphrase_custom"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Personalizada"
+                android:buttonTint="@color/bitcoin_orange"
+                android:textColor="@color/gb_border"
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Você escolhe sua própria passphrase."
+                android:textSize="12sp"
+                android:textColor="@color/gb_border_soft"
+                android:paddingStart="36dp" />
+
+        </RadioGroup>
+
+        <!-- Bloco "Personalizada" -->
+        <LinearLayout
+            android:id="@+id/group_passphrase_custom"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:layout_marginTop="16dp">
+
+            <!-- Aviso -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardBackgroundColor="#2A1A00"
+                app:cardCornerRadius="10dp"
+                app:cardElevation="0dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="14dp"
+                    android:textSize="13sp"
+                    android:textColor="@color/bitcoin_orange"
+                    android:lineSpacingExtra="3dp"
+                    android:text="⚠️  Se você errar UM caractere, a wallet fica IRRECUPERÁVEL — nem nós podemos ajudar. Na hora de restaurar, você terá que digitar EXATAMENTE o que puser aqui.\n\nRecomendações:\n• Evite caracteres especiais (@, #, %, acentos…)\n• Evite misturar maiúsculas e minúsculas — é fácil esquecer qual usou\n• Não abuse da criatividade — quanto mais simples, menor o risco de errar depois\n• Evite passar de 20 caracteres" />
+
+            </androidx.cardview.widget.CardView>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Sua passphrase"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_marginBottom="8dp"
+                app:boxStrokeColor="@color/gb_border_soft"
+                app:hintTextColor="@color/gb_border_soft">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_passphrase_custom"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textVisiblePassword|textNoSuggestions"
+                    android:textColor="@color/gb_border"
+                    android:fontFamily="monospace"
+                    android:singleLine="true" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <TextView
+                android:id="@+id/tv_passphrase_custom_count"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="0 caracteres"
+                android:textSize="12sp"
+                android:textColor="@color/gb_border_soft"
+                android:gravity="end" />
+
+        </LinearLayout>
+
+        <!-- Erro -->
+        <TextView
+            android:id="@+id/tv_passphrase_choice_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/error_red"
+            android:textSize="13sp"
+            android:lineSpacingExtra="3dp"
+            android:layout_marginTop="16dp"
+            android:visibility="gone" />
+
+        <!-- Botões -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="24dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_cancel_passphrase_choice"
+                style="@style/Gameboy.Button.Outline"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:text="Cancelar"
+                android:textSize="12sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_confirm_passphrase_choice"
+                style="@style/Gameboy.Button"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:text="Continuar"
+                android:textSize="12sp"
+                app:backgroundTint="@color/accent_yellow" />
+
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

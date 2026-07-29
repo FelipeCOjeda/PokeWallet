@@ -180,30 +180,7 @@ data class Psbt(
      *
      * Calculado localmente: não depende de nenhuma resposta de rede.
      */
-    fun txid(): String {
-        val out = ByteArrayOutputStream()
-
-        out.write(int32LE(unsignedTx.version))
-
-        out.write(varInt(unsignedTx.inputs.size.toLong()))
-        unsignedTx.inputs.forEach { input ->
-            out.write(input.prevTxId)
-            out.write(int32LE(input.prevIndex))
-            out.write(varInt(0)) // scriptSig vazio (mesma convenção do finalize())
-            out.write(int32LE(input.sequence.toInt()))
-        }
-
-        out.write(varInt(unsignedTx.outputs.size.toLong()))
-        unsignedTx.outputs.forEach { output ->
-            out.write(int64LE(output.value))
-            out.write(varInt(output.scriptPubKey.size.toLong()))
-            out.write(output.scriptPubKey)
-        }
-
-        out.write(int32LE(unsignedTx.lockTime.toInt()))
-
-        return CryptoUtils.doubleSha256(out.toByteArray()).reversedArray().toHex()
-    }
+    fun txid(): String = unsignedTx.txid()
 
     // -------------------------------------------------
     // Serialização da transação final (SegWit)
@@ -349,6 +326,62 @@ data class UnsignedTransaction(
         }
     }
 }
+
+/**
+ * Txid — double-sha256 da serialização legada (sem witness), com os
+ * bytes revertidos pra exibição (convenção Bitcoin de txid em hex é
+ * big-endian). scriptSig sempre vazio: nem SegWit v0 nem v1 (Taproot)
+ * usam scriptSig, e para o único caso que usa (P2SH-wrapped) este app
+ * não implementa suporte.
+ *
+ * Independe de PSBT/tipo de gasto — usada tanto por Psbt.txid() (BIP84)
+ * quanto pelo caminho Taproot (BIP86), que não tem uma classe Psbt própria
+ * com esse método.
+ */
+fun UnsignedTransaction.txid(): String {
+    val out = ByteArrayOutputStream()
+
+    out.write(psbtInt32LE(version))
+
+    out.write(psbtVarInt(inputs.size.toLong()))
+    inputs.forEach { input ->
+        out.write(input.prevTxId)
+        out.write(psbtInt32LE(input.prevIndex))
+        out.write(psbtVarInt(0)) // scriptSig vazio
+        out.write(psbtInt32LE(input.sequence.toInt()))
+    }
+
+    out.write(psbtVarInt(outputs.size.toLong()))
+    outputs.forEach { output ->
+        out.write(psbtInt64LE(output.value))
+        out.write(psbtVarInt(output.scriptPubKey.size.toLong()))
+        out.write(output.scriptPubKey)
+    }
+
+    out.write(psbtInt32LE(lockTime.toInt()))
+
+    return CryptoUtils.doubleSha256(out.toByteArray()).reversedArray().toHex()
+}
+
+private fun psbtVarInt(value: Long): ByteArray =
+    when {
+        value < 0xfd -> byteArrayOf(value.toByte())
+        value <= 0xffff ->
+            byteArrayOf(0xfd.toByte()) + psbtInt16LE(value.toInt())
+        value <= 0xffffffffL ->
+            byteArrayOf(0xfe.toByte()) + psbtInt32LE(value.toInt())
+        else ->
+            byteArrayOf(0xff.toByte()) + psbtInt64LE(value)
+    }
+
+private fun psbtInt16LE(value: Int): ByteArray =
+    ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort(value.toShort()).array()
+
+private fun psbtInt32LE(value: Int): ByteArray =
+    ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(value).array()
+
+private fun psbtInt64LE(value: Long): ByteArray =
+    ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(value).array()
 
 data class TxIn(
     val prevTxId: ByteArray,

@@ -67,6 +67,8 @@ class WalletFragment : Fragment() {
         val cardBag          = view.findViewById<View>(R.id.card_bag)
         val tvWalletName     = view.findViewById<TextView>(R.id.tv_wallet_name)
         val btnForget        = view.findViewById<MaterialButton>(R.id.btn_forget)
+        val btnThemeLight    = view.findViewById<MaterialButton>(R.id.btn_theme_light)
+        val btnThemeDark     = view.findViewById<MaterialButton>(R.id.btn_theme_dark)
         val cardError        = view.findViewById<View>(R.id.card_error)
         val tvError          = view.findViewById<TextView>(R.id.tv_error)
         val bottomNav        = view.findViewById<BottomNavigationView>(R.id.bottom_nav)
@@ -101,6 +103,32 @@ class WalletFragment : Fragment() {
 
         btnSend.setOnClickListener { showSendDialog() }
         btnForget.setOnClickListener { confirmForget() }
+
+        fun refreshThemeButtons() {
+            val dark = ThemePrefs.isDarkMode(requireContext())
+            btnThemeLight.setBackgroundResource(
+                if (!dark) R.drawable.bg_gameboy_button_solid else R.drawable.bg_gameboy_button_outline)
+            btnThemeLight.backgroundTintList =
+                if (!dark) ContextCompat.getColorStateList(requireContext(), R.color.accent_yellow) else null
+            btnThemeDark.setBackgroundResource(
+                if (dark) R.drawable.bg_gameboy_button_solid else R.drawable.bg_gameboy_button_outline)
+            btnThemeDark.backgroundTintList =
+                if (dark) ContextCompat.getColorStateList(requireContext(), R.color.accent_yellow) else null
+        }
+        refreshThemeButtons()
+
+        btnThemeLight.setOnClickListener {
+            if (ThemePrefs.isDarkMode(requireContext())) {
+                ThemePrefs.setDarkMode(requireContext(), false)
+                requireActivity().recreate()
+            }
+        }
+        btnThemeDark.setOnClickListener {
+            if (!ThemePrefs.isDarkMode(requireContext())) {
+                ThemePrefs.setDarkMode(requireContext(), true)
+                requireActivity().recreate()
+            }
+        }
 
         val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
@@ -353,13 +381,13 @@ class WalletFragment : Fragment() {
                         is SendState.PublishingToRelays -> {
                             progressSend.visibility = View.VISIBLE
                             tvSendError.text         = getString(R.string.publishing_to_relays)
-                            tvSendError.setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+                            tvSendError.setTextColor(ContextCompat.getColor(requireContext(), R.color.gb_border_soft))
                             tvSendError.visibility   = View.VISIBLE
                         }
                         is SendState.AwaitingRelayConfirmation -> {
                             progressSend.visibility = View.VISIBLE
                             tvSendError.text         = getString(R.string.awaiting_relay_confirmation)
-                            tvSendError.setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+                            tvSendError.setTextColor(ContextCompat.getColor(requireContext(), R.color.gb_border_soft))
                             tvSendError.visibility   = View.VISIBLE
                         }
                         is SendState.Success -> {
@@ -434,7 +462,7 @@ class WalletFragment : Fragment() {
             text      = statusText
             textSize  = 11f
             setTextColor(ContextCompat.getColor(requireContext(),
-                if (tx.confirmed) R.color.text_secondary else R.color.bitcoin_orange))
+                if (tx.confirmed) R.color.gb_border_soft else R.color.bitcoin_orange))
         }
 
         row.addView(tvAmount)
@@ -444,7 +472,7 @@ class WalletFragment : Fragment() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, (1 * dp).toInt()
             ).also { it.setMargins(0, 0, 0, 0) }
-            setBackgroundColor(ContextCompat.getColor(requireContext(), R.color.divider))
+            setBackgroundColor(ContextCompat.getColor(requireContext(), R.color.gb_border_soft))
         }
 
         return LinearLayout(requireContext()).apply {
@@ -457,7 +485,7 @@ class WalletFragment : Fragment() {
     private fun makeTxPlaceholder(): View = TextView(requireContext()).apply {
         text      = "Nenhuma transação encontrada"
         textSize  = 13f
-        setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+        setTextColor(ContextCompat.getColor(requireContext(), R.color.gb_border_soft))
         setPadding(0, (8 * resources.displayMetrics.density).toInt(), 0,
             (8 * resources.displayMetrics.density).toInt())
     }

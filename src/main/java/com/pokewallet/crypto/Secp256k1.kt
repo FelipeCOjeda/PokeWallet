@@ -146,6 +146,50 @@ object Secp256k1 {
     }
 
     // =================================================
+    // Taproot key-path tweak (BIP341, sem script tree)
+    // =================================================
+
+    /**
+     * Tweaka a chave privada pro key-path spend de um output Taproot
+     * SEM script tree (só key-path — é o único modo que este app usa).
+     *
+     * Segue taproot_tweak_seckey do BIP341: ajusta a paridade de P=d*G,
+     * soma tagged_hash("TapTweak", x(P)). A paridade FINAL de Q=d'*G é
+     * resolvida dentro de signSchnorr() (que já faz esse ajuste sozinho),
+     * então o valor retornado aqui pode ser usado diretamente como
+     * privateKey de signSchnorr().
+     */
+    fun taprootTweakPrivateKey(privateKey: ByteArray): ByteArray {
+        require(privateKey.size == 32)
+
+        val d0 = BigInteger(1, privateKey)
+        val p = CURVE.g.multiply(d0).normalize()
+        val d = if (p.yCoord.toBigInteger().testBit(0)) N.subtract(d0) else d0
+
+        val px = p.xCoord.toBigInteger().toBytes32()
+        val t = taggedHash("TapTweak", px).toBigInt().mod(N)
+
+        return d.add(t).mod(N).toBytes32()
+    }
+
+    /**
+     * Deriva a output key Taproot (x-only, 32 bytes) a partir de uma
+     * chave pública x-only interna — usado pra endereço watch-only
+     * (a partir do xpub, sem chave privada). Mesmo tweak do BIP341,
+     * aplicado sobre o ponto público (lift_x com Y par) em vez do escalar.
+     */
+    fun taprootOutputKeyFromInternalXOnly(xOnlyPubKey: ByteArray): ByteArray {
+        require(xOnlyPubKey.size == 32)
+
+        // lift_x: força Y par (prefixo 0x02) — mesma convenção do BIP340/341
+        val p = CURVE.curve.decodePoint(byteArrayOf(0x02) + xOnlyPubKey).normalize()
+        val t = taggedHash("TapTweak", xOnlyPubKey).toBigInt().mod(N)
+        val q = p.add(CURVE.g.multiply(t)).normalize()
+
+        return q.xCoord.toBigInteger().toBytes32()
+    }
+
+    // =================================================
     // Tagged Hash (BIP340)
     // =================================================
 

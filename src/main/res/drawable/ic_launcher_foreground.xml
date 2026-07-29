@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Camada de primeiro plano vazia — o ícone é a Pokébola inteira
+     (foto em drawable-*dpi/ic_launcher_background), sem elemento extra
+     por cima. Mantido só porque adaptive-icon exige duas camadas. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:fillColor="#FFCB05"
-        android:pathData="M54,30 C44,30 36,38 36,48 C36,58 44,66 54,66 C64,66 72,58 72,48 C72,38 64,30 54,30 Z M54,62 C46,62 40,56 40,48 C40,40 46,34 54,34 C62,34 68,40 68,48 C68,56 62,62 54,62 Z M42,70 L66,70 L70,78 L38,78 Z" />
-</vector>
+    android:viewportHeight="108" />
+
