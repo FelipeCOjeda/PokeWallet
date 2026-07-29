@@ -13,6 +13,13 @@
     <string name="destination_address">Endereço destino (bc1q…)</string>
     <string name="amount_sats">Valor em satoshis</string>
     <string name="sweep_all">Enviar tudo (sweep)</string>
+    <string name="send_mode_label">MODO DE ENVIO</string>
+    <string name="send_mode_internet">🌐 Internet — rápido</string>
+    <string name="send_mode_bitchat">📡 BitChat — mais lento</string>
+    <string name="send_mode_internet_explainer">Envia direto via HTTPS pra API do mempool.space.</string>
+    <string name="send_mode_bitchat_explainer">Publica a transação como mensagem num canal Nostr público, lida por um bot que faz o broadcast. Mais lento, e não esconde a transação de quem estiver ouvindo o canal — mas seu IP nunca fala diretamente com uma API centralizada.</string>
+    <string name="publishing_to_relays">Publicando via Nostr…</string>
+    <string name="awaiting_relay_confirmation">Aguardando confirmação do relay…</string>
     <string name="i_noted_my_words">Já anotei — Verificar agora</string>
     <string name="scanning">Varrendo endereços…</string>
     <string name="sending">Enviando transação…</string>

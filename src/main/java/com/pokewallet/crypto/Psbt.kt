@@ -172,6 +172,39 @@ data class Psbt(
         return serializeFinalTransaction()
     }
 
+    /**
+     * Txid da transação — double-sha256 da serialização SEM witness
+     * (formato legado, pre-BIP144), com os bytes revertidos pra exibição
+     * (convenção Bitcoin de txid em hex é big-endian, ao contrário da
+     * serialização em si que é little-endian).
+     *
+     * Calculado localmente: não depende de nenhuma resposta de rede.
+     */
+    fun txid(): String {
+        val out = ByteArrayOutputStream()
+
+        out.write(int32LE(unsignedTx.version))
+
+        out.write(varInt(unsignedTx.inputs.size.toLong()))
+        unsignedTx.inputs.forEach { input ->
+            out.write(input.prevTxId)
+            out.write(int32LE(input.prevIndex))
+            out.write(varInt(0)) // scriptSig vazio (mesma convenção do finalize())
+            out.write(int32LE(input.sequence.toInt()))
+        }
+
+        out.write(varInt(unsignedTx.outputs.size.toLong()))
+        unsignedTx.outputs.forEach { output ->
+            out.write(int64LE(output.value))
+            out.write(varInt(output.scriptPubKey.size.toLong()))
+            out.write(output.scriptPubKey)
+        }
+
+        out.write(int32LE(unsignedTx.lockTime.toInt()))
+
+        return CryptoUtils.doubleSha256(out.toByteArray()).reversedArray().toHex()
+    }
+
     // -------------------------------------------------
     // Serialização da transação final (SegWit)
     // -------------------------------------------------

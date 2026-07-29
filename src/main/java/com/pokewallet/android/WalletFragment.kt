@@ -209,6 +209,8 @@ class WalletFragment : Fragment() {
         val etAmount     = dialogView.findViewById<TextInputEditText>(R.id.et_amount)
         val tvConversion = dialogView.findViewById<TextView>(R.id.tv_conversion)
         val cbSweep      = dialogView.findViewById<CheckBox>(R.id.cb_sweep)
+        val rgSendMode   = dialogView.findViewById<RadioGroup>(R.id.rg_send_mode)
+        val tvModeExplainer = dialogView.findViewById<TextView>(R.id.tv_send_mode_explainer)
         val progressSend = dialogView.findViewById<ProgressBar>(R.id.progress_send)
         val tvSendError  = dialogView.findViewById<TextView>(R.id.tv_send_error)
         val btnCancel    = dialogView.findViewById<MaterialButton>(R.id.btn_cancel_send)
@@ -281,6 +283,18 @@ class WalletFragment : Fragment() {
             if (checked) tvConversion.visibility = View.GONE
         }
 
+        var currentSendMode: SendMode = SendMode.Internet
+        rgSendMode.setOnCheckedChangeListener { _, checkedId ->
+            currentSendMode = when (checkedId) {
+                R.id.rb_mode_bitchat -> SendMode.BitChat
+                else                 -> SendMode.Internet
+            }
+            tvModeExplainer.setText(
+                if (currentSendMode is SendMode.BitChat) R.string.send_mode_bitchat_explainer
+                else R.string.send_mode_internet_explainer
+            )
+        }
+
         val dialog = AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
             .setView(dialogView)
             .setCancelable(false)
@@ -327,7 +341,7 @@ class WalletFragment : Fragment() {
             btnConfirm.isEnabled    = false
             btnCancel.isEnabled     = false
 
-            viewModel.sendFunds(destination, amountSats, sweep)
+            viewModel.sendFunds(destination, amountSats, sweep, currentSendMode)
 
             viewLifecycleOwner.lifecycleScope.launch {
                 viewModel.sendState.collectLatest { state ->
@@ -336,19 +350,33 @@ class WalletFragment : Fragment() {
                             progressSend.visibility = View.VISIBLE
                             btnConfirm.isEnabled    = false
                         }
+                        is SendState.PublishingToRelays -> {
+                            progressSend.visibility = View.VISIBLE
+                            tvSendError.text         = getString(R.string.publishing_to_relays)
+                            tvSendError.setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+                            tvSendError.visibility   = View.VISIBLE
+                        }
+                        is SendState.AwaitingRelayConfirmation -> {
+                            progressSend.visibility = View.VISIBLE
+                            tvSendError.text         = getString(R.string.awaiting_relay_confirmation)
+                            tvSendError.setTextColor(ContextCompat.getColor(requireContext(), R.color.text_secondary))
+                            tvSendError.visibility   = View.VISIBLE
+                        }
                         is SendState.Success -> {
                             dialog.dismiss()
                             viewModel.resetSendState()
-                            Toast.makeText(
-                                requireContext(),
-                                "✅ Enviado!\ntxid: ${state.txid.take(16)}…",
-                                Toast.LENGTH_LONG
-                            ).show()
+                            val message = if (state.confirmedByRelay) {
+                                "✅ Enviado!\ntxid: ${state.txid.take(16)}…"
+                            } else {
+                                "📡 Publicado via Nostr — aguardando confirmação (pode levar alguns minutos)\ntxid: ${state.txid.take(16)}…"
+                            }
+                            Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
                         }
                         is SendState.Error -> {
                             progressSend.visibility = View.GONE
                             btnConfirm.isEnabled    = true
                             btnCancel.isEnabled     = true
+                            tvSendError.setTextColor(ContextCompat.getColor(requireContext(), R.color.error_red))
                             tvSendError.text        = state.message
                             tvSendError.visibility  = View.VISIBLE
                             viewModel.resetSendState()

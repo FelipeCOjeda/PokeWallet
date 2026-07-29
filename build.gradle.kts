@@ -59,4 +59,11 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0") { isTransitive = false }
+
+    // Cliente WebSocket pro modo de envio via Nostr/BitChat — não existe
+    // suporte a WebSocket em java.net.HttpURLConnection, e nenhuma outra
+    // dependência do projeto cobre isso.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    testImplementation("junit:junit:4.13.2")
 }

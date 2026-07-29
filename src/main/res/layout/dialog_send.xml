@@ -180,6 +180,53 @@
             android:buttonTint="@color/bitcoin_orange"
             android:layout_marginBottom="28dp" />
 
+        <!-- Label Modo de envio -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/send_mode_label"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.15"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="10dp" />
+
+        <!-- Modo de envio -->
+        <RadioGroup
+            android:id="@+id/rg_send_mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="8dp">
+
+            <RadioButton
+                android:id="@+id/rb_mode_internet"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/send_mode_internet"
+                android:buttonTint="@color/bitcoin_orange"
+                android:textColor="@color/text_primary"
+                android:checked="true" />
+
+            <RadioButton
+                android:id="@+id/rb_mode_bitchat"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/send_mode_bitchat"
+                android:buttonTint="@color/bitcoin_orange"
+                android:textColor="@color/text_primary" />
+
+        </RadioGroup>
+
+        <TextView
+            android:id="@+id/tv_send_mode_explainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/send_mode_internet_explainer"
+            android:textSize="12sp"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="28dp" />
+
         <!-- Progresso e erro -->
         <ProgressBar
             android:id="@+id/progress_send"

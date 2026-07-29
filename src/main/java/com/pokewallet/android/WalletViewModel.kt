@@ -6,6 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.pokewallet.crypto.*
 import com.pokewallet.network.BlockstreamClient
 import com.pokewallet.network.WalletScanner
+import com.pokewallet.nostr.GeoRelayDirectory
+import com.pokewallet.nostr.NostrEvent
+import com.pokewallet.nostr.NostrKeys
+import com.pokewallet.nostr.NostrRelayClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -54,9 +58,32 @@ data class WalletTx(
 sealed class SendState {
     object Idle : SendState()
     object Sending : SendState()
-    data class Success(val txid: String) : SendState()
+    /** Só usado no modo BitChat: assinado, publicando o evento Nostr nos relays. */
+    object PublishingToRelays : SendState()
+    /** Só usado no modo BitChat: publicado em pelo menos um relay, esperando o bot confirmar. */
+    data class AwaitingRelayConfirmation(val txid: String) : SendState()
+    data class Success(
+        val txid: String,
+        val confirmedByRelay: Boolean,
+        val relayReplyText: String? = null
+    ) : SendState()
     data class Error(val message: String) : SendState()
 }
+
+/** Caminho de broadcast escolhido pelo usuário na hora de enviar. */
+sealed class SendMode {
+    object Internet : SendMode()
+    object BitChat : SendMode()
+}
+
+private data class NostrSendResult(val txid: String, val confirmed: Boolean, val replyText: String?)
+
+/**
+ * Geohash do canal BitChat onde o bitchat-broadcaster escuta.
+ * Precisa bater com o GEOHASH_CHANNEL configurado no bot
+ * (ver /home/felipe/Bots/bitchat-broadcaster/.env — default "6g").
+ */
+private const val BITCHAT_GEOHASH = "6g"
 
 class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -257,12 +284,24 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun sendFunds(destination: String, amountSats: Long?, sweep: Boolean) {
+    fun sendFunds(destination: String, amountSats: Long?, sweep: Boolean, mode: SendMode = SendMode.Internet) {
         _sendState.value = SendState.Sending
         viewModelScope.launch {
             try {
-                val txid = withContext(Dispatchers.IO) { executeSend(destination, amountSats, sweep) }
-                _sendState.value = SendState.Success(txid)
+                when (mode) {
+                    is SendMode.Internet -> {
+                        val txid = withContext(Dispatchers.IO) { executeSend(destination, amountSats, sweep) }
+                        _sendState.value = SendState.Success(txid, confirmedByRelay = true)
+                    }
+                    is SendMode.BitChat -> {
+                        val result = withContext(Dispatchers.IO) { executeSendViaNostr(destination, amountSats, sweep) }
+                        _sendState.value = SendState.Success(
+                            txid             = result.txid,
+                            confirmedByRelay = result.confirmed,
+                            relayReplyText   = result.replyText
+                        )
+                    }
+                }
                 doScan()
             } catch (e: Exception) {
                 _sendState.value = SendState.Error(humanizeError(e))
@@ -295,7 +334,56 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         _walletState.value = WalletState.NoWallet
     }
 
+    /** Transação assinada, pronta pra transmitir por qualquer um dos dois caminhos. */
+    private data class PreparedTx(
+        val rawTxHex: String,
+        val txid: String,
+        val seed: ByteArray,
+        val network: Network
+    )
+
     private fun executeSend(destination: String, amountSats: Long?, sweep: Boolean): String {
+        val prepared = buildSignedTx(destination, amountSats, sweep)
+        return BlockstreamClient.broadcast(prepared.rawTxHex, prepared.network)
+    }
+
+    private suspend fun executeSendViaNostr(destination: String, amountSats: Long?, sweep: Boolean): NostrSendResult {
+        val prepared = buildSignedTx(destination, amountSats, sweep)
+
+        _sendState.value = SendState.PublishingToRelays
+
+        val (nostrPrivKey, nostrPubKey) = NostrKeys.deriveFromSeed(prepared.seed)
+        val relays = GeoRelayDirectory.closestRelays(BITCHAT_GEOHASH)
+        val event = NostrEvent.build(
+            privKey32 = nostrPrivKey,
+            pubKey32  = nostrPubKey,
+            kind      = 20000,
+            tags      = listOf(listOf("g", BITCHAT_GEOHASH)),
+            content   = "!broadcast ${prepared.rawTxHex}"
+        )
+
+        _sendState.value = SendState.AwaitingRelayConfirmation(prepared.txid)
+
+        val result = NostrRelayClient.publishAndAwaitReply(
+            event        = event,
+            relays       = relays,
+            ourPubkeyHex = event.pubkey,
+            geohash      = BITCHAT_GEOHASH,
+            timeoutMs    = 18_000L
+        ) { content -> content.contains(prepared.txid, ignoreCase = true) }
+
+        if (!result.published) {
+            error("Não foi possível publicar via Nostr — nenhum relay confirmou o recebimento.")
+        }
+
+        return NostrSendResult(
+            txid      = prepared.txid,
+            confirmed = result.replyContent != null,
+            replyText = result.replyContent
+        )
+    }
+
+    private fun buildSignedTx(destination: String, amountSats: Long?, sweep: Boolean): PreparedTx {
         val wallet  = WalletStorage.load()
         val xpub    = requireNotNull(wallet.xpub) { "xpub não encontrado" }
         val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
@@ -369,7 +457,9 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
         val rawTxBytes = psbt.finalize()
         val rawTxHex   = rawTxBytes.joinToString("") { "%02x".format(it) }
-        return BlockstreamClient.broadcast(rawTxHex, network)
+        val txid       = psbt.txid()
+
+        return PreparedTx(rawTxHex = rawTxHex, txid = txid, seed = seed, network = network)
     }
 
     private fun humanizeError(e: Exception): String {
