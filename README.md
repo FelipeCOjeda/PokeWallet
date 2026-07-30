@@ -1,8 +1,10 @@
 # PokéWallet
 
-Uma wallet Bitcoin autocustodial pra Android com visual nostálgico de jogo de
-Game Boy da primeira geração (Pokémon Red/Blue/Yellow, anos 90) — incluindo
-uma opção de passphrase BIP39 sorteada entre os 151 Pokémon originais.
+Uma wallet Bitcoin autocustodial pra Android que consegue **enviar
+transações sem falar direto com nenhuma API central** — publicando via
+BitChat/Nostr — e com visual nostálgico de jogo de Game Boy da primeira
+geração (Pokémon Red/Blue/Yellow, anos 90), incluindo uma opção de
+passphrase BIP39 sorteada entre os 151 Pokémon originais.
 
 > ⚠️ **Projeto pessoal/hobby, não auditado.** Veja os avisos em
 > [`LICENSE.md`](./LICENSE.md) antes de usar com fundos reais.
@@ -16,6 +18,26 @@ de carteira — a derivação BIP32/39/84/86, a codificação de endereços
 Schnorr/Taproot) são implementadas diretamente no projeto, usando BouncyCastle
 só como biblioteca de curva elíptica de baixo nível.
 
+## 📡 Envio offline via BitChat/Nostr — o principal diferencial
+
+Além do envio comum via HTTPS, o PokéWallet consegue transmitir uma
+transação assinada **sem fazer nenhuma requisição direta a uma API de
+blockchain**: a transação é publicada como uma mensagem num canal Nostr
+público (o mesmo formato usado pelo app BitChat), identificada por geohash,
+e um bot ouvindo esse canal faz o broadcast de fato pra rede Bitcoin.
+
+Isso significa que:
+
+- Seu IP nunca precisa falar diretamente com uma API centralizada (tipo
+  Blockstream/mempool.space) na hora de enviar — só na hora de consultar
+  saldo/UTXOs, que é opcional de qualquer forma.
+- A identidade Nostr usada é derivada **da mesma seed BIP39** da wallet
+  (NIP-06) — não existe uma segunda chave pra guardar ou perder; restaurar a
+  wallet pelo mnemonic recria a identidade Nostr automaticamente.
+- Funciona como um plano B de transmissão em cenários de rede restrita ou
+  censurada, ou simplesmente pra quem prefere não expor o IP a um serviço
+  centralizado no momento do envio.
+
 ## Funcionalidades
 
 - **Criação e restauração de wallet** — mnemonic BIP39 de 12 ou 24 palavras.
@@ -26,9 +48,6 @@ só como biblioteca de curva elíptica de baixo nível.
   mostrado com o sprite do Pokémon na tela, no estilo Game Boy Red/Blue.
 - **Envio e recebimento** — QR code, conversão em tempo real (Sats/BTC/USD/
   BRL), varredura de saldo via API pública (Blockstream).
-- **Envio alternativo via BitChat/Nostr** — publica a transação assinada como
-  mensagem num canal Nostr público (lido por um bot que faz o broadcast),
-  como alternativa a falar direto com uma API centralizada.
 - **Proteção da seed na tela** — bloqueio de print/gravação de tela enquanto
   o mnemonic ou a passphrase estão visíveis; `wallet.json` local é
   criptografado com AES-256-GCM via Android Keystore.
