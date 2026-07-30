@@ -26,7 +26,7 @@ data class Psbt(
          */
         fun parseBase64(psbtBase64: String): Psbt {
             val raw = Base64.getDecoder().decode(psbtBase64)
-            val buffer = ByteBuffer.wrap(raw)
+            val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
 
             // Magic bytes: "psbt" + 0xff
             val magic = ByteArray(5)
@@ -289,7 +289,7 @@ data class UnsignedTransaction(
 
     companion object {
         fun parse(raw: ByteArray): UnsignedTransaction {
-            val buf = ByteBuffer.wrap(raw)
+            val buf = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
 
             val version = buf.int
             val inputCount = readVarInt(buf)
@@ -430,7 +430,7 @@ data class TxOut(
         }
 
         fun parse(raw: ByteArray): TxOut =
-            parse(ByteBuffer.wrap(raw))
+            parse(ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN))
 
         private fun readVarInt(buf: ByteBuffer): Long {
             val first = buf.get().toInt() and 0xFF

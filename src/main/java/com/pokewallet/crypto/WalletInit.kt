@@ -32,7 +32,7 @@ object WalletInit {
         val mnemonic = mnemonicWords.joinToString(" ")
         val passphrase = when (passphraseMode) {
             is PassphraseMode.None    -> ""
-            is PassphraseMode.Pokemon -> PokemonPassphrase.choose(entropy)
+            is PassphraseMode.Pokemon -> PokemonPassphrase.choose()
             is PassphraseMode.Custom  -> passphraseMode.value
         }
 

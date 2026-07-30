@@ -27,6 +27,7 @@ import com.google.android.material.textfield.TextInputLayout
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.pokewallet.R
+import com.pokewallet.crypto.FeeTimeEstimator
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -73,10 +74,18 @@ class WalletFragment : Fragment() {
         val tvError          = view.findViewById<TextView>(R.id.tv_error)
         val bottomNav        = view.findViewById<BottomNavigationView>(R.id.bottom_nav)
 
+        bottomNav.setOnItemReselectedListener { item ->
+            // BottomNavigationView não dispara setOnItemSelectedListener quando o
+            // usuário toca na aba que já está ativa — sem isso, tocar em Home de
+            // novo (já estando nela) não atualizava o saldo.
+            if (item.itemId == R.id.nav_base) viewModel.refreshNow()
+        }
+
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_base -> {
                     cardBag.visibility = View.GONE
+                    viewModel.refreshNow()
                     true
                 }
                 R.id.nav_receive -> {
@@ -212,6 +221,9 @@ class WalletFragment : Fragment() {
         val tilAmount    = dialogView.findViewById<TextInputLayout>(R.id.til_amount)
         val etAmount     = dialogView.findViewById<TextInputEditText>(R.id.et_amount)
         val tvConversion = dialogView.findViewById<TextView>(R.id.tv_conversion)
+        val sliderFee    = dialogView.findViewById<com.google.android.material.slider.Slider>(R.id.slider_fee)
+        val tvFeeRate    = dialogView.findViewById<TextView>(R.id.tv_fee_rate)
+        val tvFeeTime    = dialogView.findViewById<TextView>(R.id.tv_fee_time_estimate)
         val cbSweep      = dialogView.findViewById<CheckBox>(R.id.cb_sweep)
         val rgSendMode   = dialogView.findViewById<RadioGroup>(R.id.rg_send_mode)
         val tvModeExplainer = dialogView.findViewById<TextView>(R.id.tv_send_mode_explainer)
@@ -287,6 +299,30 @@ class WalletFragment : Fragment() {
             if (checked) tvConversion.visibility = View.GONE
         }
 
+        val feeEstimates = viewModel.getCurrentFeeEstimates()
+        // Teto do slider = O DOBRO da taxa de prioridade alta atual da mempool
+        // (pedido do Felipe — dá espaço pra pagar mais que o "rápido" em caso de
+        // pressa). Sugestão/padrão = a taxa alta em si (não o teto). Os dois
+        // arredondados pro múltiplo de 0.5 mais próximo — o Slider exige que o
+        // passo (0.5) divida certinho o intervalo valueFrom..valueTo.
+        val suggestedFeeRate = (kotlin.math.round(feeEstimates.fastest * 2) / 2.0).coerceAtLeast(0.5)
+        val maxFeeRate       = (kotlin.math.ceil(feeEstimates.fastest * 2 * 2) / 2.0).coerceAtLeast(suggestedFeeRate)
+
+        fun updateFeeLabels(rate: Double) {
+            tvFeeRate.text = "%.1f sat/vB".format(rate)
+            tvFeeTime.text = FeeTimeEstimator.estimate(feeEstimates.byBlockTarget, rate)
+        }
+
+        // Baixa o value pro mínimo ANTES de mudar valueTo — o Slider valida
+        // value <= valueTo a cada set, e o value=10 do XML pode ser maior que
+        // um valueTo novo bem baixo (mempool com pouco congestionamento).
+        sliderFee.value   = sliderFee.valueFrom
+        sliderFee.valueTo = maxFeeRate.toFloat()
+        sliderFee.value   = suggestedFeeRate.toFloat()
+        updateFeeLabels(suggestedFeeRate)
+
+        sliderFee.addOnChangeListener { _, value, _ -> updateFeeLabels(value.toDouble()) }
+
         var currentSendMode: SendMode = SendMode.Internet
         rgSendMode.setOnCheckedChangeListener { _, checkedId ->
             currentSendMode = when (checkedId) {
@@ -345,7 +381,7 @@ class WalletFragment : Fragment() {
             btnConfirm.isEnabled    = false
             btnCancel.isEnabled     = false
 
-            viewModel.sendFunds(destination, amountSats, sweep, currentSendMode)
+            viewModel.sendFunds(destination, amountSats, sweep, currentSendMode, sliderFee.value.toDouble())
 
             viewLifecycleOwner.lifecycleScope.launch {
                 viewModel.sendState.collectLatest { state ->

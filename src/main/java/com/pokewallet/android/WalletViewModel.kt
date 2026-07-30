@@ -100,6 +100,9 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     private val _priceState = MutableStateFlow<BlockstreamClient.BtcPrices?>(null)
     val priceState: StateFlow<BlockstreamClient.BtcPrices?> = _priceState.asStateFlow()
 
+    private val _feeState = MutableStateFlow<BlockstreamClient.FeeEstimates?>(null)
+    val feeState: StateFlow<BlockstreamClient.FeeEstimates?> = _feeState.asStateFlow()
+
     private val _pendingTxEvent = MutableSharedFlow<Long>(replay = 0)
     val pendingTxEvent: SharedFlow<Long> = _pendingTxEvent.asSharedFlow()
 
@@ -172,12 +175,14 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     private fun startAutoScan() {
         autoScanJob?.cancel()
         loadPrice()
+        loadFees()
         autoScanJob = viewModelScope.launch {
             doScan()
             while (true) {
                 delay(60_000L)
                 doScan()
                 loadPrice()
+                loadFees()
             }
         }
     }
@@ -192,6 +197,29 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun getCurrentPrices(): BlockstreamClient.BtcPrices? = _priceState.value
+
+    private fun loadFees() {
+        viewModelScope.launch {
+            try {
+                val wallet  = withContext(Dispatchers.IO) { WalletStorage.load() }
+                val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
+                val fees    = withContext(Dispatchers.IO) { BlockstreamClient.getFeeEstimates(network) }
+                _feeState.value = fees
+            } catch (_: Exception) {
+                if (_feeState.value == null) _feeState.value = BlockstreamClient.FeeEstimates.FALLBACK
+            }
+        }
+    }
+
+    /** Taxa sugerida (prioridade alta / confirmação mais rápida) pra pré-popular a UI de envio. */
+    fun getCurrentFeeEstimates(): BlockstreamClient.FeeEstimates =
+        _feeState.value ?: BlockstreamClient.FeeEstimates.FALLBACK
+
+    /** Força uma varredura imediata (sem esperar o ciclo de 60s) — usado pelo
+     *  botão Home, além do refresh automático já rodando em startAutoScan(). */
+    fun refreshNow() {
+        viewModelScope.launch { doScan() }
+    }
 
     private fun loadTxHistory(addresses: List<com.pokewallet.network.WalletScanner.ScannedAddress>, network: Network) {
         viewModelScope.launch {
@@ -315,32 +343,44 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         return try {
             val wallet  = WalletStorage.load()
             val seed    = SeedDerivation.fromMnemonic(wallet.mnemonic, wallet.passphrase)
-            val index   = wallet.nextExternalIndex
+            // Reserva atômica — evita que dois toques em "Receber" concorrentes
+            // (ou um toque colidindo com o índice de troco de um envio) derivem
+            // o mesmo índice/endereço.
+            val index   = WalletStorage.reserveNextExternalIndex()
             val address = ReceiveAddressService.addressAt(
                 seed      = seed,
                 spendType = wallet.spendType,
                 network   = wallet.network,
                 index     = index
             )
-            wallet.nextExternalIndex = index + 1
-            WalletStorage.save(wallet)
             Pair(address, index)
         } catch (_: Exception) {
             null
         }
     }
 
-    fun sendFunds(destination: String, amountSats: Long?, sweep: Boolean, mode: SendMode = SendMode.Internet) {
+    fun sendFunds(
+        destination: String,
+        amountSats: Long?,
+        sweep: Boolean,
+        mode: SendMode = SendMode.Internet,
+        feeRateSatPerVbyte: Double
+    ) {
         _sendState.value = SendState.Sending
         viewModelScope.launch {
             try {
+                require(feeRateSatPerVbyte >= 0.5) { "Taxa mínima é 0.5 sat/vB" }
                 when (mode) {
                     is SendMode.Internet -> {
-                        val txid = withContext(Dispatchers.IO) { executeSend(destination, amountSats, sweep) }
+                        val txid = withContext(Dispatchers.IO) {
+                            executeSend(destination, amountSats, sweep, feeRateSatPerVbyte)
+                        }
                         _sendState.value = SendState.Success(txid, confirmedByRelay = true)
                     }
                     is SendMode.BitChat -> {
-                        val result = withContext(Dispatchers.IO) { executeSendViaNostr(destination, amountSats, sweep) }
+                        val result = withContext(Dispatchers.IO) {
+                            executeSendViaNostr(destination, amountSats, sweep, feeRateSatPerVbyte)
+                        }
                         _sendState.value = SendState.Success(
                             txid             = result.txid,
                             confirmedByRelay = result.confirmed,
@@ -388,13 +428,18 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val network: Network
     )
 
-    private fun executeSend(destination: String, amountSats: Long?, sweep: Boolean): String {
-        val prepared = buildSignedTx(destination, amountSats, sweep)
+    private fun executeSend(destination: String, amountSats: Long?, sweep: Boolean, feeRateSatPerVbyte: Double): String {
+        val prepared = buildSignedTx(destination, amountSats, sweep, feeRateSatPerVbyte)
         return BlockstreamClient.broadcast(prepared.rawTxHex, prepared.network)
     }
 
-    private suspend fun executeSendViaNostr(destination: String, amountSats: Long?, sweep: Boolean): NostrSendResult {
-        val prepared = buildSignedTx(destination, amountSats, sweep)
+    private suspend fun executeSendViaNostr(
+        destination: String,
+        amountSats: Long?,
+        sweep: Boolean,
+        feeRateSatPerVbyte: Double
+    ): NostrSendResult {
+        val prepared = buildSignedTx(destination, amountSats, sweep, feeRateSatPerVbyte)
 
         _sendState.value = SendState.PublishingToRelays
 
@@ -429,7 +474,14 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    private fun buildSignedTx(destination: String, amountSats: Long?, sweep: Boolean): PreparedTx {
+    private fun buildSignedTx(
+        destination: String,
+        amountSats: Long?,
+        sweep: Boolean,
+        feeRateSatPerVbyte: Double
+    ): PreparedTx {
+        require(feeRateSatPerVbyte >= 0.5) { "Taxa mínima é 0.5 sat/vB" }
+
         val wallet  = WalletStorage.load()
         val xpub    = requireNotNull(wallet.xpub) { "xpub não encontrado" }
         val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
@@ -440,8 +492,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val scanResult = WalletScanner.scan(xpub = xpub, network = network, spendType = spendType)
         if (scanResult.totalSats == 0L) error("Saldo zero — nada para enviar.")
 
-        val fees    = BlockstreamClient.getFeeEstimates(network)
-        val feeRate = fees.halfHour.toLong().coerceAtLeast(1L)
+        val feeRate = feeRateSatPerVbyte
 
         data class SpendableUtxo(
             val txidLE: ByteArray, val vout: Int, val valueSats: Long,
@@ -478,20 +529,42 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         val totalInputSats = spendable.sumOf { it.valueSats }
-        val destSpk        = addressToScriptPubKey(destination)
-        val fee            = FeeEstimator.estimateFee(spendable.size, 1, feeRate)
-        val sendAmount     = if (sweep) totalInputSats - fee
-                            else amountSats ?: error("Valor não informado")
+        val destSpk        = addressToScriptPubKey(destination, network)
 
-        require(sendAmount > 546) { "Valor ($sendAmount sat) abaixo do dust limit após taxa de $fee sat" }
-        require(sendAmount <= totalInputSats - fee) {
-            "Saldo insuficiente: $totalInputSats sat disponíveis, fee $fee sat"
+        val plan = ChangePlanner.plan(
+            totalInputSats     = totalInputSats,
+            requestedAmount    = amountSats,
+            sweep              = sweep,
+            inputCount         = spendable.size,
+            feeRateSatPerVbyte = feeRate
+        )
+        val sendAmount = plan.sendAmount
+
+        val txOutputs: List<TxOut> = if (plan.changeValue != null) {
+            // Reserva atômica (load+incrementa+persiste numa seção crítica só) —
+            // evita que dois envios concorrentes derivem o mesmo índice de troco.
+            val changeIndex = WalletStorage.reserveNextInternalIndex()
+            val changeHdKey = when (spendType) {
+                SpendType.BIP84 -> KeyDerivation.bip84(seed, coin = network.coinType, account = 0,
+                    change = 1, address = changeIndex)
+                SpendType.BIP86 -> KeyDerivation.bip86(seed, coin = network.coinType, account = 0,
+                    change = 1, address = changeIndex)
+            }
+            val changePubKey = Secp256k1.publicKeyFromPrivate(changeHdKey.privateKey)
+            val changeSpk = when (spendType) {
+                SpendType.BIP84 -> byteArrayOf(0x00, 0x14) + Hashes.hash160(changePubKey)
+                SpendType.BIP86 -> byteArrayOf(0x51, 0x20) + Secp256k1.taprootOutputKeyFromInternalXOnly(
+                    Secp256k1.xOnlyPublicKeyFromPrivate(changeHdKey.privateKey))
+            }
+
+            listOf(TxOut(sendAmount, destSpk), TxOut(plan.changeValue, changeSpk))
+        } else {
+            listOf(TxOut(sendAmount, destSpk))
         }
 
         val txInputs   = spendable.map { s ->
             TxIn(prevTxId = s.txidLE, prevIndex = s.vout, scriptSig = byteArrayOf(), sequence = 0xFFFFFFFFL)
         }
-        val txOutputs  = listOf(TxOut(sendAmount, destSpk))
         val unsignedTx = UnsignedTransaction(version = 2, inputs = txInputs, outputs = txOutputs, lockTime = 0L)
 
         val (rawTxBytes, txid) = when (spendType) {
@@ -566,14 +639,22 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun addressToScriptPubKey(address: String): ByteArray {
-        val (_, data) = Bech32.decode(address) ?: error("Endereço inválido: $address")
+    private fun addressToScriptPubKey(address: String, network: Network): ByteArray {
+        val (hrp, data) = Bech32.decode(address) ?: error("Endereço inválido: $address")
+        require(hrp == network.hrp) {
+            "Endereço de destino é de outra rede (prefixo \"$hrp\", esperado \"${network.hrp}\") — confira se não colou um endereço testnet numa wallet mainnet (ou vice-versa)."
+        }
         require(data.isNotEmpty())
-        val witnessVersion = data[0]
+        val witnessVersion = data[0].toInt()
+        require(witnessVersion in 0..16) { "Versão de witness inválida no endereço: $witnessVersion" }
         val program5bit    = data.copyOfRange(1, data.size)
         val prog5Bytes     = ByteArray(program5bit.size) { program5bit[it].toByte() }
         val progInts       = Bech32.convertBits(prog5Bytes, 5, 8, false)
         val programBytes   = ByteArray(progInts.size) { progInts[it].toByte() }
+        require(
+            if (witnessVersion == 0) programBytes.size == 20 || programBytes.size == 32
+            else programBytes.size in 2..40
+        ) { "Tamanho de programa inválido pra witness v$witnessVersion no endereço: ${programBytes.size} bytes" }
         val versionOpcode  = if (witnessVersion == 0) 0x00.toByte() else (0x50 + witnessVersion).toByte()
         return byteArrayOf(versionOpcode, programBytes.size.toByte()) + programBytes
     }

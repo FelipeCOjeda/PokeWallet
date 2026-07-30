@@ -8,18 +8,16 @@ import java.security.MessageDigest
  * Taproot Sighash Calculator — BIP341 (key-path)
  *
  * Implementa APENAS:
- *  - key-path spend (BIP86)
- *  - SIGHASH_DEFAULT
+ *  - key-path spend (BIP86), sem script tree (ext_flag = 0)
+ *  - SIGHASH_DEFAULT (hash_type = 0x00)
+ *  - sem annex
  *
- * NÃO suporta:
- *  - script-path
- *  - annex
- *  - ANYONECANPAY
- *  - outros sighash flags
+ * Validado byte-a-byte contra o vetor de teste OFICIAL do BIP341
+ * (bitcoin/bips, wallet-test-vectors.json, keyPathSpending[0].
+ * inputSpending com txinIndex=4, hashType=0) — ver
+ * TaprootSighashCalculatorTest.kt.
  */
 object TaprootSighashCalculator {
-
-    private val ZERO32 = ByteArray(32) { 0x00 }
 
     /**
      * Calcula o sighash Taproot (BIP341)
@@ -37,90 +35,46 @@ object TaprootSighashCalculator {
             "Lista de UTXOs deve corresponder aos inputs"
         }
 
-        val taggedHash = taggedHash("TapSighash")
-
         val buffer = ByteBuffer
-            .allocate(4096)
+            .allocate(256)
             .order(ByteOrder.LITTLE_ENDIAN)
 
-        // =================================================
         // Epoch (BIP341)
-        // =================================================
         buffer.put(0x00)
 
-        // =================================================
-        // Sighash type
-        // BIP341: SIGHASH_DEFAULT = 0x00
-        // (não é serializado no witness)
-        // =================================================
-        buffer.putInt(0)
+        // Sighash type — SIGHASH_DEFAULT = 0x00 (1 byte, não 4)
+        buffer.put(0x00)
 
-        // =================================================
         // Version + Locktime
-        // =================================================
         buffer.putInt(tx.version)
         buffer.putInt(tx.lockTime.toInt())
 
-        // =================================================
-        // hashPrevouts
-        // =================================================
+        // hashPrevouts / hashAmounts / hashScriptPubKeys / hashSequences
+        // (SIGHASH_DEFAULT não é ANYONECANPAY, então os 4 sempre entram)
         buffer.put(hashPrevouts(tx))
-
-        // =================================================
-        // hashAmounts
-        // =================================================
         buffer.put(hashAmounts(utxos))
-
-        // =================================================
-        // hashScriptPubKeys
-        // =================================================
         buffer.put(hashScriptPubKeys(utxos))
-
-        // =================================================
-        // hashSequences
-        // =================================================
         buffer.put(hashSequences(tx))
 
-        // =================================================
-        // hashOutputs
-        // =================================================
+        // hashOutputs (SIGHASH_DEFAULT não é NONE nem SINGLE, então sempre entra)
         buffer.put(hashOutputs(tx))
 
-        // =================================================
-        // Spend type
-        // 0x00 = key-path spend
-        // =================================================
+        // Spend type: (ext_flag << 1) + annex_present — key-path, sem annex, sem script = 0
         buffer.put(0x00)
 
-        // =================================================
-        // Input index
-        // =================================================
+        // Input index (sem ANYONECANPAY, é só o índice — não outpoint/amount/scriptPubKey/sequence)
         buffer.putInt(inputIndex)
 
-        // =================================================
-        // hashAnnex (nenhum annex)
-        // =================================================
-        buffer.put(ZERO32)
-
-        // =================================================
-        // hashTapLeaf
-        // key-path → ZERO32
-        // =================================================
-        buffer.put(ZERO32)
-
-        // =================================================
-        // key version + code separator pos
-        // (somente script-path → zeros)
-        // =================================================
-        buffer.putInt(0)
-        buffer.putInt(0xffffffff.toInt())
+        // Sem annex → hashAnnex OMITIDO (não é zero, é ausente)
+        // ext_flag = 0 (key-path puro, sem script tree) → hashTapLeaf/key_version/codesep_pos OMITIDOS
 
         val msg = buffer.array().copyOf(buffer.position())
-        return taggedHash(msg)
+        return taggedHash("TapSighash", msg)
     }
 
     // =================================================
-    // Hash helpers
+    // Hash helpers — SHA256 SIMPLES (não double-sha256;
+    // BIP341 difere do BIP143/legacy nesse ponto)
     // =================================================
 
     private fun hashPrevouts(tx: UnsignedTransaction): ByteArray {
@@ -133,7 +87,7 @@ object TaprootSighashCalculator {
             buf.putInt(it.prevIndex)
         }
 
-        return sha256d(buf.array())
+        return sha256(buf.array())
     }
 
     private fun hashAmounts(utxos: List<TxOut>): ByteArray {
@@ -145,7 +99,7 @@ object TaprootSighashCalculator {
             buf.putLong(it.value)
         }
 
-        return sha256d(buf.array())
+        return sha256(buf.array())
     }
 
     private fun hashScriptPubKeys(utxos: List<TxOut>): ByteArray {
@@ -158,7 +112,7 @@ object TaprootSighashCalculator {
             out.put(it.scriptPubKey)
         }
 
-        return sha256d(out.array().copyOf(out.position()))
+        return sha256(out.array().copyOf(out.position()))
     }
 
     private fun hashSequences(tx: UnsignedTransaction): ByteArray {
@@ -170,7 +124,7 @@ object TaprootSighashCalculator {
             buf.putInt(it.sequence.toInt())
         }
 
-        return sha256d(buf.array())
+        return sha256(buf.array())
     }
 
     private fun hashOutputs(tx: UnsignedTransaction): ByteArray {
@@ -184,25 +138,19 @@ object TaprootSighashCalculator {
             out.put(it.scriptPubKey)
         }
 
-        return sha256d(out.array().copyOf(out.position()))
+        return sha256(out.array().copyOf(out.position()))
     }
 
     // =================================================
     // Crypto helpers
     // =================================================
 
-    private fun sha256d(data: ByteArray): ByteArray {
-        val sha256 = MessageDigest.getInstance("SHA-256")
-        return sha256.digest(sha256.digest(data))
-    }
+    private fun sha256(data: ByteArray): ByteArray =
+        MessageDigest.getInstance("SHA-256").digest(data)
 
-    private fun taggedHash(tag: String): (ByteArray) -> ByteArray {
-        val sha256 = MessageDigest.getInstance("SHA-256")
-        val tagHash = sha256.digest(tag.toByteArray())
-
-        return { msg ->
-            sha256.digest(tagHash + tagHash + msg)
-        }
+    private fun taggedHash(tag: String, data: ByteArray): ByteArray {
+        val tagHash = sha256(tag.toByteArray())
+        return sha256(tagHash + tagHash + data)
     }
 
     // =================================================

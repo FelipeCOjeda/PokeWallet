@@ -28,7 +28,7 @@ fun createWallet(
     val mnemonic = Bip39.generateMnemonic(entropy256)
 
     // Pokémon = passphrase secreta
-    val pokemon = PokemonPassphrase.choose(entropy256)
+    val pokemon = PokemonPassphrase.choose()
 
     val seed = SeedDerivation.fromMnemonic(
         mnemonicWords = mnemonic,

@@ -44,8 +44,22 @@ object BlockstreamClient {
     data class FeeEstimates(
         val fastest: Double,
         val halfHour: Double,
-        val hour: Double
-    )
+        val hour: Double,
+        /** meta em nº de blocos -> sat/vB, direto da API — usado pra estimar
+         *  tempo de confirmação de uma taxa arbitrária escolhida pelo usuário */
+        val byBlockTarget: Map<Int, Double>
+    ) {
+        companion object {
+            /** Usado quando a API está fora do ar — mantém a UI de taxa
+             *  funcional (com estimativa aproximada) em vez de travar o envio. */
+            val FALLBACK = FeeEstimates(
+                fastest       = 20.0,
+                halfHour      = 10.0,
+                hour          = 5.0,
+                byBlockTarget = mapOf(1 to 20.0, 3 to 10.0, 6 to 5.0)
+            )
+        }
+    }
 
     data class BtcPrices(val usd: Double, val brl: Double)
 
@@ -85,10 +99,15 @@ object BlockstreamClient {
 
     fun getFeeEstimates(network: Network): FeeEstimates {
         val json = JSONObject(get("${baseUrl(network)}/fee-estimates"))
+        val byBlockTarget = sortedMapOf<Int, Double>()
+        json.keys().forEach { key ->
+            key.toIntOrNull()?.let { target -> byBlockTarget[target] = json.getDouble(key) }
+        }
         return FeeEstimates(
-            fastest  = json.optDouble("1",  20.0),
-            halfHour = json.optDouble("3",  10.0),
-            hour     = json.optDouble("6",   5.0)
+            fastest       = json.optDouble("1",  20.0),
+            halfHour      = json.optDouble("3",  10.0),
+            hour          = json.optDouble("6",   5.0),
+            byBlockTarget = byBlockTarget
         )
     }
 

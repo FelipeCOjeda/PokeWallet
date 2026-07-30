@@ -37,7 +37,7 @@ object SendCommand {
 
         // ── Fee rate ──────────────────────────────────────────────
         val fees     = BlockstreamClient.getFeeEstimates(network)
-        val feeRate  = fees.halfHour.toLong().coerceAtLeast(1L)
+        val feeRate  = fees.halfHour.coerceAtLeast(1.0)
 
         // ── Build spendable UTXO list ─────────────────────────────
         data class SpendableUtxo(

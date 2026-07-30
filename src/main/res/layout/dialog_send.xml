@@ -164,6 +164,44 @@
             android:layout_marginBottom="20dp"
             android:visibility="gone" />
 
+        <!-- Label Taxa -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TAXA DE MINERAÇÃO"
+            android:textSize="10sp"
+            style="@style/Gameboy.Label"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tv_fee_rate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@color/gb_border"
+            android:text="-- sat/vB" />
+
+        <com.google.android.material.slider.Slider
+            android:id="@+id/slider_fee"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:valueFrom="0.5"
+            android:valueTo="50"
+            android:stepSize="0.5"
+            android:value="10"
+            app:thumbColor="@color/bitcoin_orange"
+            app:trackColorActive="@color/bitcoin_orange"
+            app:trackColorInactive="@color/gb_border_soft" />
+
+        <TextView
+            android:id="@+id/tv_fee_time_estimate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="@color/gb_border_soft"
+            android:layout_marginBottom="28dp" />
+
         <!-- Sweep -->
         <CheckBox
             android:id="@+id/cb_sweep"

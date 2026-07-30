@@ -46,7 +46,8 @@ object ReceiveAddressService {
 
             SpendType.BIP86 -> {
                 val xOnly = Secp256k1.xOnlyPublicKeyFromPrivate(key.privateKey)
-                AddressBuilder.p2tr(xOnly, network)
+                val outputKey = Secp256k1.taprootOutputKeyFromInternalXOnly(xOnly)
+                AddressBuilder.p2tr(outputKey, network)
             }
         }
     }

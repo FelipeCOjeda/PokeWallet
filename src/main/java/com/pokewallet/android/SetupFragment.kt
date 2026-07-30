@@ -200,6 +200,10 @@ class SetupFragment : Fragment() {
             .setCancelable(false)
             .create()
 
+        // Mnemonic e passphrase são digitados nesta tela — mesma proteção
+        // contra print/gravação de tela das telas de criação.
+        dialog.window?.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+
         btnCancel.setOnClickListener {
             viewModel.resetRestoreState()
             dialog.dismiss()
