@@ -12,6 +12,10 @@ package com.pokewallet.crypto
  */
 object ChangePlanner {
 
+    /** Menor valor que vale a pena existir como UTXO P2WPKH — abaixo disso,
+     *  custa mais caro gastar depois do que o próprio valor (dust, BIP). */
+    const val DUST_LIMIT_P2WPKH = 546L
+
     data class Plan(
         val sendAmount: Long,
         /** null = sem troco (sweep, ou troco abaixo do dust limit) */
@@ -24,7 +28,7 @@ object ChangePlanner {
         sweep: Boolean,
         inputCount: Int,
         feeRateSatPerVbyte: Double,
-        dustLimit: Long = 546L
+        dustLimit: Long = DUST_LIMIT_P2WPKH
     ): Plan {
         if (sweep) {
             val fee = FeeEstimator.estimateFee(inputCount, 1, feeRateSatPerVbyte)

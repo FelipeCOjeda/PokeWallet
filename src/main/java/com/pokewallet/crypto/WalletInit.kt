@@ -61,7 +61,7 @@ object WalletInit {
             seed,
             intArrayOf(
                 KeyDerivation.hardened(purpose),
-                KeyDerivation.hardened(network.coinType.toInt()),
+                KeyDerivation.hardened(network.coinType),
                 KeyDerivation.hardened(0)
             )
         )

@@ -10,6 +10,14 @@ object SegwitSigner {
 
     private const val SIGHASH_ALL = 0x01
 
+    // Opcodes do scriptCode legado P2PKH usado no sighash BIP143 (mesmo
+    // pra inputs P2WPKH — a spec reusa o script P2PKH como "scriptCode").
+    private const val OP_DUP: Byte = 0x76
+    private val OP_HASH160: Byte = 0xa9.toByte()
+    private const val PUSH_20_BYTES: Byte = 0x14
+    private val OP_EQUALVERIFY: Byte = 0x88.toByte()
+    private val OP_CHECKSIG: Byte = 0xac.toByte()
+
     fun sign(
         unsignedTx: UnsignedTransaction,
         inputIndex: Int,
@@ -107,12 +115,12 @@ object SegwitSigner {
 
     private fun buildP2PKHScript(pubKeyHash: ByteArray): ByteArray =
         byteArrayOf(
-            0x76,       // OP_DUP
-            0xa9.toByte(), // OP_HASH160
-            0x14        // push 20 bytes
+            OP_DUP,
+            OP_HASH160,
+            PUSH_20_BYTES
         ) + pubKeyHash + byteArrayOf(
-            0x88.toByte(), // OP_EQUALVERIFY
-            0xac.toByte()  // OP_CHECKSIG
+            OP_EQUALVERIFY,
+            OP_CHECKSIG
         )
 
     // -------------------------------------------------

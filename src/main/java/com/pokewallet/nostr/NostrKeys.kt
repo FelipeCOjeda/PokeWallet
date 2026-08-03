@@ -15,14 +15,20 @@ object NostrKeys {
 
     private const val NOSTR_COIN_TYPE = 1237
 
-    /** @return par (chave privada 32 bytes, chave pública x-only 32 bytes) */
-    fun deriveFromSeed(seed: ByteArray): Pair<ByteArray, ByteArray> {
+    /**
+     * @param accountIndex Índice de conta NIP-06 (m/44'/1237'/accountIndex'/0/0).
+     *   Default 0 preserva o comportamento existente (identidade única por
+     *   seed); um índice diferente permite múltiplas identidades Nostr da
+     *   mesma wallet, se algum dia for exposto na UI.
+     * @return par (chave privada 32 bytes, chave pública x-only 32 bytes)
+     */
+    fun deriveFromSeed(seed: ByteArray, accountIndex: Int = 0): Pair<ByteArray, ByteArray> {
         val key = KeyDerivation.derive(
             seed,
             intArrayOf(
                 KeyDerivation.hardened(44),
                 KeyDerivation.hardened(NOSTR_COIN_TYPE),
-                KeyDerivation.hardened(0),
+                KeyDerivation.hardened(accountIndex),
                 0,
                 0
             )

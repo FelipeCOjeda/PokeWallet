@@ -12,6 +12,12 @@ package com.pokewallet.crypto
  */
 object FeeEstimator {
 
+    // Peso aproximado (vbytes) de cada componente de uma tx P2WPKH — ver
+    // doc da classe acima pra origem dos números.
+    private const val VBYTES_PER_INPUT = 68
+    private const val VBYTES_PER_OUTPUT = 31
+    private const val VBYTES_OVERHEAD = 10
+
     fun estimateVbytes(
         inputs: Int,
         outputs: Int
@@ -19,7 +25,7 @@ object FeeEstimator {
         require(inputs > 0)
         require(outputs > 0)
 
-        return inputs * 68 + outputs * 31 + 10
+        return inputs * VBYTES_PER_INPUT + outputs * VBYTES_PER_OUTPUT + VBYTES_OVERHEAD
     }
 
     fun estimateFee(
