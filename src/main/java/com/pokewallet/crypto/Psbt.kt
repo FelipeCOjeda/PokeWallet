@@ -1,5 +1,9 @@
 package com.pokewallet.crypto
 
+import com.pokewallet.crypto.ByteSerializer.int32LE
+import com.pokewallet.crypto.ByteSerializer.int64LE
+import com.pokewallet.crypto.ByteSerializer.readVarInt
+import com.pokewallet.crypto.ByteSerializer.varInt
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -124,16 +128,6 @@ data class Psbt(
                 outputs = outputs
             )
         }
-
-        private fun readVarInt(buf: ByteBuffer): Long {
-            val first = buf.get().toInt() and 0xFF
-            return when {
-                first < 0xfd -> first.toLong()
-                first == 0xfd -> buf.short.toLong() and 0xFFFF
-                first == 0xfe -> buf.int.toLong() and 0xFFFFFFFFL
-                else -> buf.long
-            }
-        }
     }
 
     /**
@@ -233,33 +227,6 @@ data class Psbt(
 
         return out.toByteArray()
     }
-
-    // -------------------------------------------------
-    // Helpers de serialização
-    // -------------------------------------------------
-
-    private fun varInt(value: Long): ByteArray =
-        when {
-            value < 0xfd -> byteArrayOf(value.toByte())
-            value <= 0xffff ->
-                byteArrayOf(0xfd.toByte()) + int16LE(value.toInt())
-            value <= 0xffffffffL ->
-                byteArrayOf(0xfe.toByte()) + int32LE(value.toInt())
-            else ->
-                byteArrayOf(0xff.toByte()) + int64LE(value)
-        }
-
-    private fun int16LE(value: Int): ByteArray =
-        ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN)
-            .putShort(value.toShort()).array()
-
-    private fun int32LE(value: Int): ByteArray =
-        ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
-            .putInt(value).array()
-
-    private fun int64LE(value: Long): ByteArray =
-        ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN)
-            .putLong(value).array()
 }
 
 /* ============================================================
@@ -314,16 +281,6 @@ data class UnsignedTransaction(
                 lockTime = lockTime
             )
         }
-
-        private fun readVarInt(buf: ByteBuffer): Long {
-            val first = buf.get().toInt() and 0xFF
-            return when {
-                first < 0xfd -> first.toLong()
-                first == 0xfd -> buf.short.toLong() and 0xFFFF
-                first == 0xfe -> buf.int.toLong() and 0xFFFFFFFFL
-                else -> buf.long
-            }
-        }
     }
 }
 
@@ -341,47 +298,27 @@ data class UnsignedTransaction(
 fun UnsignedTransaction.txid(): String {
     val out = ByteArrayOutputStream()
 
-    out.write(psbtInt32LE(version))
+    out.write(int32LE(version))
 
-    out.write(psbtVarInt(inputs.size.toLong()))
+    out.write(varInt(inputs.size.toLong()))
     inputs.forEach { input ->
         out.write(input.prevTxId)
-        out.write(psbtInt32LE(input.prevIndex))
-        out.write(psbtVarInt(0)) // scriptSig vazio
-        out.write(psbtInt32LE(input.sequence.toInt()))
+        out.write(int32LE(input.prevIndex))
+        out.write(varInt(0)) // scriptSig vazio
+        out.write(int32LE(input.sequence.toInt()))
     }
 
-    out.write(psbtVarInt(outputs.size.toLong()))
+    out.write(varInt(outputs.size.toLong()))
     outputs.forEach { output ->
-        out.write(psbtInt64LE(output.value))
-        out.write(psbtVarInt(output.scriptPubKey.size.toLong()))
+        out.write(int64LE(output.value))
+        out.write(varInt(output.scriptPubKey.size.toLong()))
         out.write(output.scriptPubKey)
     }
 
-    out.write(psbtInt32LE(lockTime.toInt()))
+    out.write(int32LE(lockTime.toInt()))
 
     return CryptoUtils.doubleSha256(out.toByteArray()).reversedArray().toHex()
 }
-
-private fun psbtVarInt(value: Long): ByteArray =
-    when {
-        value < 0xfd -> byteArrayOf(value.toByte())
-        value <= 0xffff ->
-            byteArrayOf(0xfd.toByte()) + psbtInt16LE(value.toInt())
-        value <= 0xffffffffL ->
-            byteArrayOf(0xfe.toByte()) + psbtInt32LE(value.toInt())
-        else ->
-            byteArrayOf(0xff.toByte()) + psbtInt64LE(value)
-    }
-
-private fun psbtInt16LE(value: Int): ByteArray =
-    ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort(value.toShort()).array()
-
-private fun psbtInt32LE(value: Int): ByteArray =
-    ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(value).array()
-
-private fun psbtInt64LE(value: Long): ByteArray =
-    ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(value).array()
 
 data class TxIn(
     val prevTxId: ByteArray,
@@ -403,16 +340,6 @@ data class TxIn(
 
             return TxIn(txid, index, script, seq)
         }
-
-        private fun readVarInt(buf: ByteBuffer): Long {
-            val first = buf.get().toInt() and 0xFF
-            return when {
-                first < 0xfd -> first.toLong()
-                first == 0xfd -> buf.short.toLong() and 0xFFFF
-                first == 0xfe -> buf.int.toLong() and 0xFFFFFFFFL
-                else -> buf.long
-            }
-        }
     }
 }
 
@@ -431,15 +358,5 @@ data class TxOut(
 
         fun parse(raw: ByteArray): TxOut =
             parse(ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN))
-
-        private fun readVarInt(buf: ByteBuffer): Long {
-            val first = buf.get().toInt() and 0xFF
-            return when {
-                first < 0xfd -> first.toLong()
-                first == 0xfd -> buf.short.toLong() and 0xFFFF
-                first == 0xfe -> buf.int.toLong() and 0xFFFFFFFFL
-                else -> buf.long
-            }
-        }
     }
 }

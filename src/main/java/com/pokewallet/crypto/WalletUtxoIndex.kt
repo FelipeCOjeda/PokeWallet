@@ -73,7 +73,7 @@ object WalletUtxoIndex {
                 ?: continue
 
             val valueSats =
-                (u.getDouble("amount") * 100_000_000).toLong()
+                Math.round(u.getDouble("amount") * 100_000_000.0)
 
             total += valueSats
 

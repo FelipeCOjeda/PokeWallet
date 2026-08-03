@@ -3,25 +3,15 @@ package com.pokewallet.crypto
 object SeedDerivation {
 
     /**
-     * BIP39:
-     * seed = PBKDF2(
-     *   mnemonic,
-     *   salt = "mnemonic" + passphrase,
-     *   iterations = 2048,
-     *   keylen = 512 bits
-     * )
+     * BIP39: seed = PBKDF2(mnemonic, salt = "mnemonic" + passphrase,
+     * iterations = 2048, keylen = 512 bits). Delega pra Bip39.mnemonicToSeed
+     * (implementação única, validada contra os vetores oficiais do BIP39
+     * em Bip39Test.kt) — mantido como wrapper porque é o nome chamado em
+     * toda a base de código (WalletViewModel, WalletInit, WalletRestore,
+     * SendCommand, etc.).
      */
     fun fromMnemonic(
         mnemonicWords: List<String>,
         passphrase: String = ""
-    ): ByteArray {
-
-        val mnemonic = mnemonicWords.joinToString(" ")
-        val salt = "mnemonic$passphrase"
-
-        return CryptoUtils.pbkdf2Sha512(
-            mnemonic = mnemonic,
-            salt = salt
-        )
-    }
+    ): ByteArray = Bip39.mnemonicToSeed(mnemonicWords, passphrase)
 }

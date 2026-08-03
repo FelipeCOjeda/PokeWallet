@@ -1,8 +1,9 @@
 package com.pokewallet.crypto
 
+import com.pokewallet.crypto.ByteSerializer.int32LE
+import com.pokewallet.crypto.ByteSerializer.int64LE
+import com.pokewallet.crypto.ByteSerializer.varInt
 import java.io.ByteArrayOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.security.MessageDigest
 
 object SegwitSigner {
@@ -113,33 +114,6 @@ object SegwitSigner {
             0x88.toByte(), // OP_EQUALVERIFY
             0xac.toByte()  // OP_CHECKSIG
         )
-
-    // -------------------------------------------------
-    // Serialization helpers
-    // -------------------------------------------------
-
-    private fun varInt(value: Long): ByteArray =
-        when {
-            value < 0xfd -> byteArrayOf(value.toByte())
-            value <= 0xffff ->
-                byteArrayOf(0xfd.toByte()) + int16LE(value.toInt())
-            value <= 0xffffffffL ->
-                byteArrayOf(0xfe.toByte()) + int32LE(value.toInt())
-            else ->
-                byteArrayOf(0xff.toByte()) + int64LE(value)
-        }
-
-    private fun int16LE(value: Int): ByteArray =
-        ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN)
-            .putShort(value.toShort()).array()
-
-    private fun int32LE(value: Int): ByteArray =
-        ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
-            .putInt(value).array()
-
-    private fun int64LE(value: Long): ByteArray =
-        ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN)
-            .putLong(value).array()
 
     // -------------------------------------------------
     // Crypto helpers

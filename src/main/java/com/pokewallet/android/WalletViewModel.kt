@@ -343,17 +343,21 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         return try {
             val wallet  = WalletStorage.load()
             val seed    = SeedDerivation.fromMnemonic(wallet.mnemonic, wallet.passphrase)
-            // Reserva atômica — evita que dois toques em "Receber" concorrentes
-            // (ou um toque colidindo com o índice de troco de um envio) derivem
-            // o mesmo índice/endereço.
-            val index   = WalletStorage.reserveNextExternalIndex()
-            val address = ReceiveAddressService.addressAt(
-                seed      = seed,
-                spendType = wallet.spendType,
-                network   = wallet.network,
-                index     = index
-            )
-            Pair(address, index)
+            try {
+                // Reserva atômica — evita que dois toques em "Receber" concorrentes
+                // (ou um toque colidindo com o índice de troco de um envio) derivem
+                // o mesmo índice/endereço.
+                val index   = WalletStorage.reserveNextExternalIndex()
+                val address = ReceiveAddressService.addressAt(
+                    seed      = seed,
+                    spendType = wallet.spendType,
+                    network   = wallet.network,
+                    index     = index
+                )
+                Pair(address, index)
+            } finally {
+                seed.fill(0)
+            }
         } catch (_: Exception) {
             null
         }
@@ -430,7 +434,11 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun executeSend(destination: String, amountSats: Long?, sweep: Boolean, feeRateSatPerVbyte: Double): String {
         val prepared = buildSignedTx(destination, amountSats, sweep, feeRateSatPerVbyte)
-        return BlockstreamClient.broadcast(prepared.rawTxHex, prepared.network)
+        try {
+            return BlockstreamClient.broadcast(prepared.rawTxHex, prepared.network)
+        } finally {
+            prepared.seed.fill(0)
+        }
     }
 
     private suspend fun executeSendViaNostr(
@@ -444,14 +452,19 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         _sendState.value = SendState.PublishingToRelays
 
         val (nostrPrivKey, nostrPubKey) = NostrKeys.deriveFromSeed(prepared.seed)
+        prepared.seed.fill(0)
         val relays = GeoRelayDirectory.closestRelays(BITCHAT_GEOHASH)
-        val event = NostrEvent.build(
-            privKey32 = nostrPrivKey,
-            pubKey32  = nostrPubKey,
-            kind      = 20000,
-            tags      = listOf(listOf("g", BITCHAT_GEOHASH)),
-            content   = "!broadcast ${prepared.rawTxHex}"
-        )
+        val event = try {
+            NostrEvent.build(
+                privKey32 = nostrPrivKey,
+                pubKey32  = nostrPubKey,
+                kind      = 20000,
+                tags      = listOf(listOf("g", BITCHAT_GEOHASH)),
+                content   = "!broadcast ${prepared.rawTxHex}"
+            )
+        } finally {
+            nostrPrivKey.fill(0)
+        }
 
         _sendState.value = SendState.AwaitingRelayConfirmation(prepared.txid)
 
@@ -556,6 +569,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 SpendType.BIP86 -> byteArrayOf(0x51, 0x20) + Secp256k1.taprootOutputKeyFromInternalXOnly(
                     Secp256k1.xOnlyPublicKeyFromPrivate(changeHdKey.privateKey))
             }
+            changeHdKey.privateKey.fill(0)
 
             listOf(TxOut(sendAmount, destSpk), TxOut(plan.changeValue, changeSpk))
         } else {
@@ -587,6 +601,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                     psbt.inputs[i].witnessUtxo = TxOut(s.valueSats, s.scriptPubKey)
                     psbt.inputs[i].partialSignatures[s.pubKey] = sig
                 }
+                spendable.forEach { it.privateKey.fill(0) }
 
                 Pair(psbt.finalize(), psbt.txid())
             }
@@ -609,11 +624,16 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                         utxos    = utxoTxOuts
                     )
                     val tweakedPrivKey = Secp256k1.taprootTweakPrivateKey(s.privateKey)
-                    psbt.inputs[i].tapKeySig = SchnorrSigner.sign(
-                        msg32     = sighash,
-                        privKey32 = tweakedPrivKey
-                    )
+                    try {
+                        psbt.inputs[i].tapKeySig = SchnorrSigner.sign(
+                            msg32     = sighash,
+                            privKey32 = tweakedPrivKey
+                        )
+                    } finally {
+                        tweakedPrivKey.fill(0)
+                    }
                 }
+                spendable.forEach { it.privateKey.fill(0) }
 
                 Pair(psbt.finalize(), unsignedTx.txid())
             }

@@ -1,8 +1,9 @@
 package com.pokewallet.crypto
 
+import com.pokewallet.crypto.ByteSerializer.int32LE
+import com.pokewallet.crypto.ByteSerializer.int64LE
+import com.pokewallet.crypto.ByteSerializer.varInt
 import java.io.ByteArrayOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 object SighashCalculator {
 
@@ -151,39 +152,6 @@ object SighashCalculator {
         }
         return out.toByteArray()
     }
-
-    // =================================================
-    // Primitive serializers
-    // =================================================
-
-    private fun int32LE(v: Int): ByteArray =
-        ByteBuffer.allocate(4)
-            .order(ByteOrder.LITTLE_ENDIAN)
-            .putInt(v)
-            .array()
-
-    private fun int64LE(v: Long): ByteArray =
-        ByteBuffer.allocate(8)
-            .order(ByteOrder.LITTLE_ENDIAN)
-            .putLong(v)
-            .array()
-
-    private fun int16LE(v: Int): ByteArray =
-        ByteBuffer.allocate(2)
-            .order(ByteOrder.LITTLE_ENDIAN)
-            .putShort(v.toShort())
-            .array()
-
-    private fun varInt(value: Long): ByteArray =
-        when {
-            value < 0xFD -> byteArrayOf(value.toByte())
-            value <= 0xFFFF ->
-                byteArrayOf(0xFD.toByte()) + int16LE(value.toInt())
-            value <= 0xFFFFFFFFL ->
-                byteArrayOf(0xFE.toByte()) + int32LE(value.toInt())
-            else ->
-                byteArrayOf(0xFF.toByte()) + int64LE(value)
-        }
 
     // =================================================
     // Hash helpers

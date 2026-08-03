@@ -3,8 +3,6 @@ package com.pokewallet.crypto
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Mac
-import javax.crypto.SecretKeyFactory
-import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 object CryptoUtils {
@@ -34,33 +32,5 @@ object CryptoUtils {
         val mac = Mac.getInstance("HmacSHA512")
         mac.init(SecretKeySpec(key, "HmacSHA512"))
         return mac.doFinal(data)
-    }
-
-    /**
-     * PBKDF2-HMAC-SHA512
-     *
-     * BIP39:
-     * seed = PBKDF2(
-     *   password = mnemonic,
-     *   salt = "mnemonic" + passphrase,
-     *   iterations = 2048,
-     *   keyLength = 512 bits
-     * )
-     */
-    fun pbkdf2Sha512(
-        mnemonic: String,
-        salt: String,
-        iterations: Int = 2048,
-        keyLengthBits: Int = 512
-    ): ByteArray {
-        val spec = PBEKeySpec(
-            mnemonic.toCharArray(),
-            salt.toByteArray(),
-            iterations,
-            keyLengthBits
-        )
-
-        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512")
-        return factory.generateSecret(spec).encoded
     }
 }

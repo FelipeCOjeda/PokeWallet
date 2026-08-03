@@ -1,6 +1,5 @@
 package com.pokewallet.crypto
 
-import org.json.JSONObject
 import java.io.File
 
 /**
@@ -35,18 +34,19 @@ object WalletForget {
         }
 
         // -----------------------------
-        // Leitura mínima para contexto
+        // Leitura mínima para contexto (via WalletStorage — respeita
+        // a criptografia AES-GCM do wallet.json, não lê o arquivo cru)
         // -----------------------------
-        val json = try {
-            JSONObject(walletFile.readText())
+        val wallet = try {
+            WalletStorage.load()
         } catch (e: Exception) {
-            println("❌ wallet.json está corrompido ou ilegível.")
+            println("❌ wallet.json está corrompido, ilegível ou não pôde ser descriptografado.")
             println("Apague manualmente se tiver certeza do que está fazendo.")
             return
         }
 
-        val walletName = json.optString("walletName", "<desconhecida>")
-        val fingerprint = json.optString("fingerprint", "<desconhecido>")
+        val walletName = wallet.walletName
+        val fingerprint = wallet.fingerprint
 
         println("Wallet encontrada:")
         println("  Nome        : $walletName")
