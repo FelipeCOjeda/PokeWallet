@@ -3,6 +3,7 @@ package com.pokewallet.commands
 import com.pokewallet.crypto.*
 import com.pokewallet.network.BlockstreamClient
 import com.pokewallet.network.WalletScanner
+import kotlinx.coroutines.runBlocking
 
 object SendCommand {
 
@@ -42,7 +43,7 @@ object SendCommand {
     ) {
         // ── Scan UTXOs ────────────────────────────────────────────
         println("🔍 Varrendo UTXOs na rede ${network.name}...")
-        val scanResult = WalletScanner.scan(xpub = xpub, network = network)
+        val scanResult = runBlocking { WalletScanner.scan(xpub = xpub, network = network) }
 
         if (scanResult.totalSats == 0L) {
             println("❌ Saldo zero. Nada para enviar.")

@@ -137,10 +137,21 @@ object BlockstreamClient {
         return received - spent
     }
 
+    /**
+     * Preço via Binance; se falhar (fora do ar, instável, rate limit),
+     * cai pra CoinGecko antes de desistir — evita o preço ficar
+     * indefinidamente null só porque UM provedor caiu.
+     */
     fun getBtcPrices(): BtcPrices {
-        val usd = JSONObject(get("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT")).getDouble("price")
-        val brl = JSONObject(get("https://api.binance.com/api/v3/ticker/price?symbol=BTCBRL")).getDouble("price")
-        return BtcPrices(usd, brl)
+        return try {
+            val usd = JSONObject(get("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT")).getDouble("price")
+            val brl = JSONObject(get("https://api.binance.com/api/v3/ticker/price?symbol=BTCBRL")).getDouble("price")
+            BtcPrices(usd, brl)
+        } catch (_: Exception) {
+            val coin = JSONObject(get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,brl"))
+                .getJSONObject("bitcoin")
+            BtcPrices(usd = coin.getDouble("usd"), brl = coin.getDouble("brl"))
+        }
     }
 
     // ── HTTP primitives ───────────────────────────────

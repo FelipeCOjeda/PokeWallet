@@ -453,7 +453,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val network: Network
     )
 
-    private fun executeSend(destination: String, amountSats: Long?, sweep: Boolean, feeRateSatPerVbyte: Double): String {
+    private suspend fun executeSend(destination: String, amountSats: Long?, sweep: Boolean, feeRateSatPerVbyte: Double): String {
         val prepared = buildSignedTx(destination, amountSats, sweep, feeRateSatPerVbyte)
         try {
             return BlockstreamClient.broadcast(prepared.rawTxHex, prepared.network)
@@ -514,7 +514,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
      * (5-15s, dezenas de requests HTTP) logo depois de um já ter rodado.
      * Caso contrário faz um scan novo e atualiza o cache.
      */
-    private fun scanForSend(
+    private suspend fun scanForSend(
         xpub: String,
         network: Network,
         spendType: SpendType
@@ -532,7 +532,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         return result
     }
 
-    private fun buildSignedTx(
+    private suspend fun buildSignedTx(
         destination: String,
         amountSats: Long?,
         sweep: Boolean,

@@ -4,6 +4,7 @@ import com.pokewallet.crypto.Network
 import com.pokewallet.crypto.WalletStorage
 import com.pokewallet.network.BlockstreamClient
 import com.pokewallet.network.WalletScanner
+import kotlinx.coroutines.runBlocking
 
 /**
  * scan — Varre a wallet via Blockstream API (sem Bitcoin Core).
@@ -42,16 +43,18 @@ object ScanCommand {
             println("   ⚠️  Modo --testnet: endereços tb1q (não bcrt1q)")
         println()
 
-        val result = WalletScanner.scan(
-            xpub     = xpub,
-            network  = network,
-            onProgress = { chain, index, address ->
-                if (verbose) {
-                    val label = if (chain == 0) "ext" else "int"
-                    print("  [$label/$index] $address\r")
+        val result = runBlocking {
+            WalletScanner.scan(
+                xpub     = xpub,
+                network  = network,
+                onProgress = { chain, index, address ->
+                    if (verbose) {
+                        val label = if (chain == 0) "ext" else "int"
+                        print("  [$label/$index] $address\r")
+                    }
                 }
-            }
-        )
+            )
+        }
 
         if (verbose) println()
 

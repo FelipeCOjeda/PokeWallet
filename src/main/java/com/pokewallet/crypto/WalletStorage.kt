@@ -6,6 +6,10 @@ import java.io.File
 object WalletStorage {
 
     var filesDir: File = File(".")
+        set(value) {
+            field = value
+            cachedRawJson = null // muda o diretório -> cache do wallet.json antigo não vale mais
+        }
 
     private val walletFile get() = File(filesDir, "wallet.json")
 
@@ -20,26 +24,43 @@ object WalletStorage {
      */
     private val lock = Any()
 
+    /**
+     * Cache do JSON já decriptado — evita reler+redecriptar (AES-GCM) o
+     * arquivo do disco em toda chamada de load(), que acontece dezenas de
+     * vezes por ciclo de vida normal do app. Invalidado (setado pro
+     * conteúdo novo) em toda escrita, e limpo em delete()/troca de
+     * filesDir. Cada load() ainda faz um JSONObject(...) novo a partir do
+     * cache — nunca devolve a MESMA instância de WalletData/JSONObject pra
+     * chamadores diferentes (eles mutam nextExternalIndex/nextInternalIndex
+     * e o próprio JSONObject diretamente antes de chamar save(), então
+     * compartilhar a instância entre chamadores seria inseguro).
+     */
+    private var cachedRawJson: String? = null
+
     fun exists(): Boolean = walletFile.exists()
 
     fun load(): WalletData = synchronized(lock) { loadLocked() }
 
     private fun loadLocked(): WalletData {
 
-        require(walletFile.exists()) {
-            "wallet.json não encontrado. Rode wallet-init primeiro."
-        }
+        val rawJson: String = cachedRawJson ?: run {
+            require(walletFile.exists()) {
+                "wallet.json não encontrado. Rode wallet-init primeiro."
+            }
 
-        val bytes = walletFile.readBytes()
+            val bytes = walletFile.readBytes()
 
-        // Detect encrypted (magic byte 0xAE) vs legacy plaintext (starts with '{')
-        val rawJson: String = if (bytes.isNotEmpty() && bytes[0] == WalletEncryption.MAGIC) {
-            WalletEncryption.decrypt(bytes)
-        } else {
-            // Legacy plaintext — migrate to encrypted on the spot
-            val text = String(bytes, Charsets.UTF_8)
-            walletFile.writeBytes(WalletEncryption.encrypt(text))
-            text
+            // Detect encrypted (magic byte 0xAE) vs legacy plaintext (starts with '{')
+            val decrypted: String = if (bytes.isNotEmpty() && bytes[0] == WalletEncryption.MAGIC) {
+                WalletEncryption.decrypt(bytes)
+            } else {
+                // Legacy plaintext — migrate to encrypted on the spot
+                val text = String(bytes, Charsets.UTF_8)
+                walletFile.writeBytes(WalletEncryption.encrypt(text))
+                text
+            }
+
+            decrypted.also { cachedRawJson = it }
         }
 
         val json = JSONObject(rawJson)
@@ -71,7 +92,9 @@ object WalletStorage {
         }
 
         if (dirty) {
-            walletFile.writeBytes(WalletEncryption.encrypt(json.toString(2)))
+            val migrated = json.toString(2)
+            walletFile.writeBytes(WalletEncryption.encrypt(migrated))
+            cachedRawJson = migrated
         }
 
         val mnemonic = json
@@ -101,12 +124,16 @@ object WalletStorage {
     private fun saveLocked(wallet: WalletData) {
         wallet.raw.put("nextExternalIndex", wallet.nextExternalIndex)
         wallet.raw.put("nextInternalIndex", wallet.nextInternalIndex)
-        walletFile.writeBytes(WalletEncryption.encrypt(wallet.raw.toString(2)))
+        val serialized = wallet.raw.toString(2)
+        walletFile.writeBytes(WalletEncryption.encrypt(serialized))
+        cachedRawJson = serialized
     }
 
     /** Write a freshly-built JSONObject as encrypted wallet.json (used by WalletInit/WalletRestore). */
     fun saveRaw(json: JSONObject): Unit = synchronized(lock) {
-        walletFile.writeBytes(WalletEncryption.encrypt(json.toString(2)))
+        val serialized = json.toString(2)
+        walletFile.writeBytes(WalletEncryption.encrypt(serialized))
+        cachedRawJson = serialized
     }
 
     /**
@@ -132,5 +159,8 @@ object WalletStorage {
         index
     }
 
-    fun delete(): Boolean = walletFile.delete()
+    fun delete(): Boolean = synchronized(lock) {
+        cachedRawJson = null
+        walletFile.delete()
+    }
 }
