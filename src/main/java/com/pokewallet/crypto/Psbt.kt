@@ -98,7 +98,7 @@ data class Psbt(
                         0x02 -> {
                             // partial signature
                             val pubKey = key.copyOfRange(1, key.size)
-                            input.partialSignatures[pubKey] = value
+                            input.partialSignatures[pubKey.toHex()] = value
                         }
                     }
                 }
@@ -151,13 +151,13 @@ data class Psbt(
                 "Multisig ainda não suportado"
             }
 
-            val (pubKey, signature) =
+            val (pubKeyHex, signature) =
                 input.partialSignatures.entries.first()
 
             // witness stack: <sig> <pubkey>
             input.finalWitness = listOf(
                 signature,
-                pubKey
+                pubKeyHex.hexToBytes()
             )
 
             input.partialSignatures.clear()
@@ -236,7 +236,10 @@ data class Psbt(
 
 class PsbtInput {
     var witnessUtxo: TxOut? = null
-    val partialSignatures: MutableMap<ByteArray, ByteArray> = mutableMapOf()
+    // Chave = hex do pubkey. ByteArray como chave de Map compara por
+    // identidade de objeto, não por conteúdo — dois pubkeys com os mesmos
+    // bytes seriam tratados como entradas diferentes.
+    val partialSignatures: MutableMap<String, ByteArray> = mutableMapOf()
     var finalWitness: List<ByteArray>? = null
 }
 

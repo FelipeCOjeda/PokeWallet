@@ -1,6 +1,9 @@
 package com.pokewallet.crypto
 
+import com.pokewallet.crypto.ByteSerializer.int32LE
+import com.pokewallet.crypto.ByteSerializer.int64LE
 import com.pokewallet.crypto.ByteSerializer.varInt
+import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
@@ -36,41 +39,38 @@ object TaprootSighashCalculator {
             "Lista de UTXOs deve corresponder aos inputs"
         }
 
-        val buffer = ByteBuffer
-            .allocate(256)
-            .order(ByteOrder.LITTLE_ENDIAN)
+        val out = ByteArrayOutputStream()
 
         // Epoch (BIP341)
-        buffer.put(0x00)
+        out.write(0x00)
 
         // Sighash type — SIGHASH_DEFAULT = 0x00 (1 byte, não 4)
-        buffer.put(0x00)
+        out.write(0x00)
 
         // Version + Locktime
-        buffer.putInt(tx.version)
-        buffer.putInt(tx.lockTime.toInt())
+        out.write(int32LE(tx.version))
+        out.write(int32LE(tx.lockTime.toInt()))
 
         // hashPrevouts / hashAmounts / hashScriptPubKeys / hashSequences
         // (SIGHASH_DEFAULT não é ANYONECANPAY, então os 4 sempre entram)
-        buffer.put(hashPrevouts(tx))
-        buffer.put(hashAmounts(utxos))
-        buffer.put(hashScriptPubKeys(utxos))
-        buffer.put(hashSequences(tx))
+        out.write(hashPrevouts(tx))
+        out.write(hashAmounts(utxos))
+        out.write(hashScriptPubKeys(utxos))
+        out.write(hashSequences(tx))
 
         // hashOutputs (SIGHASH_DEFAULT não é NONE nem SINGLE, então sempre entra)
-        buffer.put(hashOutputs(tx))
+        out.write(hashOutputs(tx))
 
         // Spend type: (ext_flag << 1) + annex_present — key-path, sem annex, sem script = 0
-        buffer.put(0x00)
+        out.write(0x00)
 
         // Input index (sem ANYONECANPAY, é só o índice — não outpoint/amount/scriptPubKey/sequence)
-        buffer.putInt(inputIndex)
+        out.write(int32LE(inputIndex))
 
         // Sem annex → hashAnnex OMITIDO (não é zero, é ausente)
         // ext_flag = 0 (key-path puro, sem script tree) → hashTapLeaf/key_version/codesep_pos OMITIDOS
 
-        val msg = buffer.array().copyOf(buffer.position())
-        return taggedHash("TapSighash", msg)
+        return taggedHash("TapSighash", out.toByteArray())
     }
 
     // =================================================
@@ -104,16 +104,14 @@ object TaprootSighashCalculator {
     }
 
     private fun hashScriptPubKeys(utxos: List<TxOut>): ByteArray {
-        val out = ByteBuffer
-            .allocate(4096)
-            .order(ByteOrder.LITTLE_ENDIAN)
+        val out = ByteArrayOutputStream()
 
         utxos.forEach {
-            out.put(varInt(it.scriptPubKey.size.toLong()))
-            out.put(it.scriptPubKey)
+            out.write(varInt(it.scriptPubKey.size.toLong()))
+            out.write(it.scriptPubKey)
         }
 
-        return sha256(out.array().copyOf(out.position()))
+        return sha256(out.toByteArray())
     }
 
     private fun hashSequences(tx: UnsignedTransaction): ByteArray {
@@ -129,17 +127,15 @@ object TaprootSighashCalculator {
     }
 
     private fun hashOutputs(tx: UnsignedTransaction): ByteArray {
-        val out = ByteBuffer
-            .allocate(4096)
-            .order(ByteOrder.LITTLE_ENDIAN)
+        val out = ByteArrayOutputStream()
 
         tx.outputs.forEach {
-            out.putLong(it.value)
-            out.put(varInt(it.scriptPubKey.size.toLong()))
-            out.put(it.scriptPubKey)
+            out.write(int64LE(it.value))
+            out.write(varInt(it.scriptPubKey.size.toLong()))
+            out.write(it.scriptPubKey)
         }
 
-        return sha256(out.array().copyOf(out.position()))
+        return sha256(out.toByteArray())
     }
 
     // =================================================

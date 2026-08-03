@@ -644,7 +644,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                         privateKey   = s.privateKey
                     )
                     psbt.inputs[i].witnessUtxo = TxOut(s.valueSats, s.scriptPubKey)
-                    psbt.inputs[i].partialSignatures[s.pubKey] = sig
+                    psbt.inputs[i].partialSignatures[s.pubKey.toHex()] = sig
                 }
                 spendable.forEach { it.privateKey.fill(0) }
 

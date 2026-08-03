@@ -152,7 +152,7 @@ object SendCommand {
                     privateKey  = s.privateKey
                 )
                 psbt.inputs[i].witnessUtxo = TxOut(s.valueSats, s.scriptPubKey)
-                psbt.inputs[i].partialSignatures[s.pubKey] = sig
+                psbt.inputs[i].partialSignatures[s.pubKey.toHex()] = sig
             }
 
             // ── Finalize and broadcast ────────────────────────────────
