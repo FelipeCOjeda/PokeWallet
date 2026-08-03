@@ -2,10 +2,6 @@ package com.pokewallet.network
 
 import com.pokewallet.crypto.Network
 import com.pokewallet.crypto.SpendType
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 
 /**
  * Varre uma HD wallet via Blockstream API usando BIP44 gap limit.
@@ -22,14 +18,6 @@ import kotlinx.coroutines.coroutineScope
 object WalletScanner {
 
     const val GAP_LIMIT_DEFAULT = 20
-
-    /**
-     * Quantos endereços buscar em paralelo por vez dentro de uma chain.
-     * Balanceia velocidade (menos round-trips sequenciais) com rate
-     * limiting da API pública da Blockstream — batch grande demais
-     * arrisca 429/timeout.
-     */
-    private const val SCAN_BATCH_SIZE = 8
 
     // ── Models ────────────────────────────────────────────
 
@@ -104,19 +92,16 @@ object WalletScanner {
         spendType: SpendType = SpendType.BIP84,
         gapLimit: Int = GAP_LIMIT_DEFAULT,
         onProgress: ((chain: Int, index: Int, address: String) -> Unit)? = null
-    ): ScanResult = coroutineScope {
-        // Chains externa e interna são independentes — varrem em paralelo.
-        val externalDeferred = async { scanChain(xpub, network, spendType, chain = 0, gapLimit, onProgress) }
-        val internalDeferred = async { scanChain(xpub, network, spendType, chain = 1, gapLimit, onProgress) }
-        val external = externalDeferred.await()
-        val internal = internalDeferred.await()
+    ): ScanResult {
+        val external = scanChain(xpub, network, spendType, chain = 0, gapLimit, onProgress)
+        val internal = scanChain(xpub, network, spendType, chain = 1, gapLimit, onProgress)
 
         val all       = external.scanned + internal.scanned
         val withFunds = all.filter { it.utxos.isNotEmpty() }
         val activity  = all.filter { it.stats.hasActivity }
         val totalSats = withFunds.sumOf { it.balanceSats }
 
-        ScanResult(
+        return ScanResult(
             network             = network,
             totalSats           = totalSats,
             addressesWithFunds  = withFunds,
@@ -131,14 +116,6 @@ object WalletScanner {
 
     private data class ChainResult(val scanned: List<ScannedAddress>, val nextIndex: Int)
 
-    /**
-     * Varre endereços em lotes de até SCAN_BATCH_SIZE, buscados em paralelo
-     * (async/awaitAll) — dentro de cada lote a ordem de chegada não importa,
-     * mas os resultados são processados na ordem do índice (garantida pelo
-     * .map preservar a ordem dos Deferred) pra manter exatamente a mesma
-     * lógica sequencial de gap limit de antes (reseta em atividade, incrementa
-     * em endereço vazio, para quando atinge gapLimit consecutivos).
-     */
     private suspend fun scanChain(
         xpub: String,
         network: Network,
@@ -146,44 +123,34 @@ object WalletScanner {
         chain: Int,
         gapLimit: Int,
         onProgress: ((Int, Int, String) -> Unit)?
-    ): ChainResult = coroutineScope {
+    ): ChainResult {
         val scanned = mutableListOf<ScannedAddress>()
         var gap = 0
+        var index = 0
         var lastUsed = -1
-        var nextIndex = 0
 
         while (gap < gapLimit) {
-            val batchSize = minOf(SCAN_BATCH_SIZE, gapLimit - gap)
-            val batchStart = nextIndex
+            val address = when (spendType) {
+                SpendType.BIP84 -> XpubAddressDeriver.p2wpkhAddress(xpub, chain, index, network)
+                SpendType.BIP86 -> XpubAddressDeriver.p2trAddress(xpub, chain, index, network)
+            }
+            onProgress?.invoke(chain, index, address)
 
-            val batch = (batchStart until batchStart + batchSize).map { index ->
-                async(Dispatchers.IO) {
-                    val address = when (spendType) {
-                        SpendType.BIP84 -> XpubAddressDeriver.p2wpkhAddress(xpub, chain, index, network)
-                        SpendType.BIP86 -> XpubAddressDeriver.p2trAddress(xpub, chain, index, network)
-                    }
-                    onProgress?.invoke(chain, index, address)
+            val stats = BlockstreamClient.getAddressStats(address, network)
+            val utxos = if (stats.hasActivity) BlockstreamClient.getUtxos(address, network) else emptyList()
 
-                    val stats = BlockstreamClient.getAddressStats(address, network)
-                    val utxos = if (stats.hasActivity) BlockstreamClient.getUtxos(address, network) else emptyList()
+            scanned += ScannedAddress(chain, index, address, stats, utxos)
 
-                    ScannedAddress(chain, index, address, stats, utxos)
-                }
-            }.awaitAll()
-
-            for (result in batch) {
-                scanned += result
-                if (result.stats.hasActivity) {
-                    lastUsed = result.index
-                    gap = 0
-                } else {
-                    gap++
-                }
+            if (stats.hasActivity) {
+                lastUsed = index
+                gap = 0
+            } else {
+                gap++
             }
 
-            nextIndex = batchStart + batchSize
+            index++
         }
 
-        ChainResult(scanned, lastUsed + 1)
+        return ChainResult(scanned, lastUsed + 1)
     }
 }
