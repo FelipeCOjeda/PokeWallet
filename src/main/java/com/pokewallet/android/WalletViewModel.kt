@@ -89,6 +89,14 @@ private data class NostrSendResult(val txid: String, val confirmed: Boolean, val
  */
 private const val BITCHAT_GEOHASH = "6g"
 
+/**
+ * Por quanto tempo o resultado do último scan (doScan()) é reaproveitado
+ * por buildSignedTx() em vez de disparar um scan completo novo. 90s = 1.5x
+ * o intervalo do autoScanJob (60s) — cobre o caso comum (enviar logo após
+ * a varredura periódica) sem arriscar UTXO desatualizado por muito tempo.
+ */
+private const val SCAN_CACHE_TTL_MS = 90_000L
+
 class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _walletState = MutableStateFlow<WalletState>(WalletState.Loading)
@@ -114,6 +122,14 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
     private var lastKnownPendingSats: Long = 0L
     private var autoScanJob: Job? = null
+
+    // Cache do último scan bem-sucedido (doScan(), que já roda a cada 60s via
+    // autoScanJob) — reusado por buildSignedTx() pra evitar repetir um scan
+    // completo (5-15s, dezenas de requests HTTP) que acabou de rodar. Só é
+    // reaproveitado se ainda estiver "fresco" (ver SCAN_CACHE_TTL_MS) e for da
+    // mesma rede; caso contrário buildSignedTx() força um scan novo.
+    private var lastScanResult: com.pokewallet.network.WalletScanner.ScanResult? = null
+    private var lastScanResultAtMs: Long = 0L
 
     init {
         WalletStorage.filesDir = app.filesDir
@@ -277,6 +293,9 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 WalletStorage.save(wallet)
             }
 
+            lastScanResult = result
+            lastScanResultAtMs = System.currentTimeMillis()
+
             val confirmedSats = result.addressesWithFunds.sumOf { it.stats.confirmedSats }
             val pendingSats   = result.addressesWithFunds.sumOf { it.stats.pendingSats }
 
@@ -421,6 +440,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     fun forgetWallet() {
         autoScanJob?.cancel()
         WalletStorage.delete()
+        lastScanResult = null
+        lastScanResultAtMs = 0L
         _walletState.value = WalletState.NoWallet
     }
 
@@ -487,6 +508,30 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /**
+     * Reusa o cache de doScan() se ainda estiver fresco (mesma rede,
+     * dentro de SCAN_CACHE_TTL_MS) — evita repetir um scan completo
+     * (5-15s, dezenas de requests HTTP) logo depois de um já ter rodado.
+     * Caso contrário faz um scan novo e atualiza o cache.
+     */
+    private fun scanForSend(
+        xpub: String,
+        network: Network,
+        spendType: SpendType
+    ): com.pokewallet.network.WalletScanner.ScanResult {
+        val cached = lastScanResult
+        val fresh = cached != null &&
+            cached.network == network &&
+            System.currentTimeMillis() - lastScanResultAtMs < SCAN_CACHE_TTL_MS
+
+        if (fresh) return cached!!
+
+        val result = WalletScanner.scan(xpub = xpub, network = network, spendType = spendType)
+        lastScanResult = result
+        lastScanResultAtMs = System.currentTimeMillis()
+        return result
+    }
+
     private fun buildSignedTx(
         destination: String,
         amountSats: Long?,
@@ -502,7 +547,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
         val spendType = wallet.spendType
 
-        val scanResult = WalletScanner.scan(xpub = xpub, network = network, spendType = spendType)
+        val scanResult = scanForSend(xpub, network, spendType)
         if (scanResult.totalSats == 0L) error("Saldo zero — nada para enviar.")
 
         val feeRate = feeRateSatPerVbyte
