@@ -10,13 +10,14 @@ object ReceiveCommand : Command {
         // Load wallet (fonte da verdade)
         // -----------------------------
         val wallet = WalletContext.loadValidated()
+        require(!wallet.isWatchOnly) { "Esta carteira é watch-only (sem seed) — comando indisponível no CLI." }
 
         // -----------------------------
         // Seed
         // -----------------------------
         val seed = SeedDerivation.fromMnemonic(
-            wallet.mnemonic,
-            wallet.passphrase
+            wallet.mnemonic!!,
+            wallet.passphrase!!
         )
 
         // -----------------------------

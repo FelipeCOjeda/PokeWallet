@@ -33,21 +33,26 @@ object WalletSchemaValidator {
         }
 
         // -------------------------------------------------
-        // Seed / segredo
+        // Seed / segredo — dispensado numa carteira watch-only (importada
+        // só por xpub, sem acesso à chave privada neste dispositivo)
         // -------------------------------------------------
-        require(json.has("mnemonic")) {
-            "wallet.json inválido: campo 'mnemonic' ausente"
-        }
+        val isWatchOnly = json.optBoolean("isWatchOnly", false)
 
-        val mnemonic = json.getString("mnemonic").trim()
-        val words = mnemonic.split(Regex("\\s+"))
+        if (!isWatchOnly) {
+            require(json.has("mnemonic")) {
+                "wallet.json inválido: campo 'mnemonic' ausente"
+            }
 
-        require(words.size == 12 || words.size == 24) {
-            "Mnemonic inválido: esperado 12 ou 24 palavras, encontrado ${words.size}"
-        }
+            val mnemonic = json.getString("mnemonic").trim()
+            val words = mnemonic.split(Regex("\\s+"))
 
-        require(json.has("passphrase")) {
-            "wallet.json inválido: campo 'passphrase' ausente"
+            require(words.size == 12 || words.size == 24) {
+                "Mnemonic inválido: esperado 12 ou 24 palavras, encontrado ${words.size}"
+            }
+
+            require(json.has("passphrase")) {
+                "wallet.json inválido: campo 'passphrase' ausente"
+            }
         }
 
         // -------------------------------------------------

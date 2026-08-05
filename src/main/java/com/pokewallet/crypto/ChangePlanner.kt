@@ -28,10 +28,11 @@ object ChangePlanner {
         sweep: Boolean,
         inputCount: Int,
         feeRateSatPerVbyte: Double,
+        spendType: SpendType,
         dustLimit: Long = DUST_LIMIT_P2WPKH
     ): Plan {
         if (sweep) {
-            val fee = FeeEstimator.estimateFee(inputCount, 1, feeRateSatPerVbyte)
+            val fee = FeeEstimator.estimateFee(inputCount, 1, spendType, feeRateSatPerVbyte)
             val sendAmount = totalInputSats - fee
             require(sendAmount > dustLimit) {
                 "Valor ($sendAmount sat) abaixo do dust limit após taxa de $fee sat"
@@ -42,7 +43,7 @@ object ChangePlanner {
         val sendAmount = requestedAmount ?: error("Valor não informado")
         require(sendAmount > dustLimit) { "Valor ($sendAmount sat) abaixo do dust limit" }
 
-        val feeNoChange = FeeEstimator.estimateFee(inputCount, 1, feeRateSatPerVbyte)
+        val feeNoChange = FeeEstimator.estimateFee(inputCount, 1, spendType, feeRateSatPerVbyte)
         require(sendAmount <= totalInputSats - feeNoChange) {
             "Saldo insuficiente: $totalInputSats sat disponíveis, fee $feeNoChange sat"
         }
@@ -52,7 +53,7 @@ object ChangePlanner {
         // manter um UTXO de troco abaixo do dust custaria mais pra gastar
         // depois do que ele vale); a validação acima (fee de 1 output) já
         // garante que sobra o suficiente nesse caso.
-        val feeWithChange = FeeEstimator.estimateFee(inputCount, 2, feeRateSatPerVbyte)
+        val feeWithChange = FeeEstimator.estimateFee(inputCount, 2, spendType, feeRateSatPerVbyte)
         val changeValue   = totalInputSats - sendAmount - feeWithChange
 
         return if (changeValue > dustLimit) Plan(sendAmount, changeValue) else Plan(sendAmount, null)

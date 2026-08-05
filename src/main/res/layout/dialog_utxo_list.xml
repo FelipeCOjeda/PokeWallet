@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/gb_screen">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_gameboy_box"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🪙 UTXOs"
+            android:textSize="13sp"
+            style="@style/Gameboy.Title"
+            android:gravity="center"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Toque em um UTXO pra congelar/descongelar. UTXOs congelados ficam de fora do envio automático e da seleção manual."
+            android:textSize="11sp"
+            android:textColor="@color/gb_border_soft"
+            android:gravity="center"
+            android:layout_marginBottom="16dp" />
+
+        <LinearLayout
+            android:id="@+id/layout_utxo_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="16dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_close_utxo_list"
+            style="@style/Gameboy.Button.Outline"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Fechar"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+</ScrollView>

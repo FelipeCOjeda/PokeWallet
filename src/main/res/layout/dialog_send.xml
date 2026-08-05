@@ -210,52 +210,80 @@
             android:text="@string/sweep_all"
             android:textColor="@color/gb_border_soft"
             android:buttonTint="@color/bitcoin_orange"
-            android:layout_marginBottom="28dp" />
+            android:layout_marginBottom="12dp" />
 
-        <!-- Label Modo de envio -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/send_mode_label"
+        <!-- Seleção manual de UTXOs -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_select_utxos"
+            style="@style/Gameboy.Button.Outline"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="🪙 Selecionar UTXOs manualmente"
             android:textSize="10sp"
-            style="@style/Gameboy.Label"
-            android:layout_marginBottom="10dp" />
-
-        <!-- Modo de envio -->
-        <RadioGroup
-            android:id="@+id/rg_send_mode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginBottom="8dp">
-
-            <RadioButton
-                android:id="@+id/rb_mode_internet"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/send_mode_internet"
-                android:buttonTint="@color/bitcoin_orange"
-                android:textColor="@color/gb_border"
-                android:checked="true" />
-
-            <RadioButton
-                android:id="@+id/rb_mode_bitchat"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/send_mode_bitchat"
-                android:buttonTint="@color/bitcoin_orange"
-                android:textColor="@color/gb_border" />
-
-        </RadioGroup>
+            android:layout_marginBottom="20dp" />
 
         <TextView
-            android:id="@+id/tv_send_mode_explainer"
+            android:id="@+id/tv_utxo_selection_summary"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/send_mode_internet_explainer"
-            android:textSize="12sp"
-            android:textColor="@color/gb_border_soft"
+            android:textSize="11sp"
+            android:textColor="@color/bitcoin_orange"
+            android:visibility="gone"
             android:layout_marginBottom="28dp" />
+
+        <!-- Modo de envio — seção inteira escondida no fluxo air-gapped
+             (watch-only não assina localmente, não se aplica nem Internet
+             nem BitChat aqui). -->
+        <LinearLayout
+            android:id="@+id/group_send_mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/send_mode_label"
+                android:textSize="10sp"
+                style="@style/Gameboy.Label"
+                android:layout_marginBottom="10dp" />
+
+            <RadioGroup
+                android:id="@+id/rg_send_mode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="8dp">
+
+                <RadioButton
+                    android:id="@+id/rb_mode_internet"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/send_mode_internet"
+                    android:buttonTint="@color/bitcoin_orange"
+                    android:textColor="@color/gb_border"
+                    android:checked="true" />
+
+                <RadioButton
+                    android:id="@+id/rb_mode_bitchat"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/send_mode_bitchat"
+                    android:buttonTint="@color/bitcoin_orange"
+                    android:textColor="@color/gb_border" />
+
+            </RadioGroup>
+
+            <TextView
+                android:id="@+id/tv_send_mode_explainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/send_mode_internet_explainer"
+                android:textSize="12sp"
+                android:textColor="@color/gb_border_soft"
+                android:layout_marginBottom="28dp" />
+
+        </LinearLayout>
 
         <!-- Progresso e erro -->
         <ProgressBar

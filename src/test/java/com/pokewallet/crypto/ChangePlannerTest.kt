@@ -9,8 +9,8 @@ import org.junit.Test
  * Edge cases de dust/sweep/saldo insuficiente do ChangePlanner — a
  * função que evita a wallet esvaziar em fee num envio parcial (ver
  * histórico da classe). Números calculados a partir de
- * FeeEstimator.estimateVbytes = inputs*68 + outputs*31 + 10, feeRate
- * 1.0 sat/vB (fee == vbytes).
+ * FeeEstimator.estimateVbytes(BIP84) = inputs*68 + outputs*31 + 10,
+ * feeRate 1.0 sat/vB (fee == vbytes), salvo onde indicado.
  */
 class ChangePlannerTest {
 
@@ -22,7 +22,8 @@ class ChangePlannerTest {
             requestedAmount = null,
             sweep = true,
             inputCount = 1,
-            feeRateSatPerVbyte = 1.0
+            feeRateSatPerVbyte = 1.0,
+            spendType = SpendType.BIP84
         )
         assertEquals(891L, plan.sendAmount)
         assertNull(plan.changeValue)
@@ -37,7 +38,8 @@ class ChangePlannerTest {
                 requestedAmount = null,
                 sweep = true,
                 inputCount = 1,
-                feeRateSatPerVbyte = 1.0
+                feeRateSatPerVbyte = 1.0,
+                spendType = SpendType.BIP84
             )
         }
     }
@@ -50,7 +52,8 @@ class ChangePlannerTest {
             requestedAmount = 5000L,
             sweep = false,
             inputCount = 1,
-            feeRateSatPerVbyte = 1.0
+            feeRateSatPerVbyte = 1.0,
+            spendType = SpendType.BIP84
         )
         assertEquals(5000L, plan.sendAmount)
         assertEquals(4860L, plan.changeValue)
@@ -65,7 +68,8 @@ class ChangePlannerTest {
             requestedAmount = 5000L,
             sweep = false,
             inputCount = 1,
-            feeRateSatPerVbyte = 1.0
+            feeRateSatPerVbyte = 1.0,
+            spendType = SpendType.BIP84
         )
         assertEquals(5000L, plan.sendAmount)
         assertNull(plan.changeValue)
@@ -79,7 +83,8 @@ class ChangePlannerTest {
                 requestedAmount = 500L,
                 sweep = false,
                 inputCount = 1,
-                feeRateSatPerVbyte = 1.0
+                feeRateSatPerVbyte = 1.0,
+                spendType = SpendType.BIP84
             )
         }
     }
@@ -93,7 +98,8 @@ class ChangePlannerTest {
                 requestedAmount = 900L,
                 sweep = false,
                 inputCount = 1,
-                feeRateSatPerVbyte = 1.0
+                feeRateSatPerVbyte = 1.0,
+                spendType = SpendType.BIP84
             )
         }
     }
@@ -106,8 +112,27 @@ class ChangePlannerTest {
                 requestedAmount = null,
                 sweep = false,
                 inputCount = 1,
-                feeRateSatPerVbyte = 1.0
+                feeRateSatPerVbyte = 1.0,
+                spendType = SpendType.BIP84
             )
         }
+    }
+
+    @Test
+    fun taprootWalletUsesLargerOutputCostThanSegwit() {
+        // vbytes(1 input, 2 outputs, BIP86) = 58 + 2*43 + 10 = 154 → fee 154
+        // (contra 140 no equivalente BIP84 acima) — prova que o troco de uma
+        // carteira BIP86 é calculado com o custo real do output P2TR, não
+        // mais a constante fixa de P2WPKH que subestimava a fee.
+        val plan = ChangePlanner.plan(
+            totalInputSats = 10000L,
+            requestedAmount = 5000L,
+            sweep = false,
+            inputCount = 1,
+            feeRateSatPerVbyte = 1.0,
+            spendType = SpendType.BIP86
+        )
+        assertEquals(5000L, plan.sendAmount)
+        assertEquals(4846L, plan.changeValue)
     }
 }

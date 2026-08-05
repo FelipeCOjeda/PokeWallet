@@ -113,10 +113,11 @@ object WalletCli {
     fun receive() {
 
         val wallet = WalletStorage.load()
+        require(!wallet.isWatchOnly) { "Esta carteira é watch-only (sem seed) — comando indisponível no CLI." }
 
         val seed = SeedDerivation.fromMnemonic(
-            wallet.mnemonic,
-            wallet.passphrase
+            wallet.mnemonic!!,
+            wallet.passphrase!!
         )
 
         val index = wallet.nextExternalIndex

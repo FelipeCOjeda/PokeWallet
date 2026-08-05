@@ -24,7 +24,6 @@
     <string name="scanning">Varrendo endereços…</string>
     <string name="sending">Enviando transação…</string>
     <string name="sovereignty_warning">Sua seed é sua responsabilidade.\nNinguém pode recuperá-la por você.</string>
-    <string name="nav_base">Base</string>
     <string name="nav_receive">Receber</string>
     <string name="nav_send">Enviar</string>
     <string name="nav_bag">Mochila</string>

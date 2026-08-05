@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/gb_screen">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_gameboy_box"
+        android:padding="24dp"
+        android:gravity="center_horizontal">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="✅ TX ASSINADA"
+            android:textSize="13sp"
+            style="@style/Gameboy.Title"
+            android:gravity="center"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Volte pro aparelho watch-only e toque em “Escanear tx assinada” pra escanear esse QR."
+            android:textSize="12sp"
+            android:textColor="@color/gb_border_soft"
+            android:gravity="center"
+            android:layout_marginBottom="20dp" />
+
+        <ImageView
+            android:id="@+id/img_qr_signed_tx"
+            android:layout_width="240dp"
+            android:layout_height="240dp"
+            android:layout_marginBottom="16dp"
+            android:background="@android:color/white"
+            android:padding="10dp"
+            android:scaleType="fitCenter" />
+
+        <TextView
+            android:id="@+id/tv_signed_txid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="11sp"
+            android:textIsSelectable="true"
+            android:fontFamily="monospace"
+            android:textColor="@color/gb_border_soft"
+            android:gravity="center"
+            android:layout_marginBottom="24dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_close_sign_result"
+            style="@style/Gameboy.Button"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Fechar"
+            android:textSize="12sp"
+            app:backgroundTint="@color/green_status" />
+
+    </LinearLayout>
+</ScrollView>

@@ -4,18 +4,23 @@ data class Utxo(
     val txid: ByteArray,
     val vout: Int,
     val value: Long,
-    val scriptPubKey: ByteArray
+    val scriptPubKey: ByteArray,
+    /** Chain/index HD que controla este UTXO (0=externo/1=interno, índice) —
+     *  necessário pra derivar a chave certa depois de selecionado. */
+    val chain: Int = 0,
+    val index: Int = 0
 )
 
 object CoinSelector {
 
     /**
-     * Largest-first coin selection
+     * Largest-first coin selection.
      */
     fun select(
         utxos: List<Utxo>,
         targetValue: Long,
-        feeRateSatPerVbyte: Long
+        feeRateSatPerVbyte: Double,
+        spendType: SpendType
     ): Pair<List<Utxo>, Long> {
 
         require(utxos.isNotEmpty()) {
@@ -34,6 +39,7 @@ object CoinSelector {
             val estimatedFee = FeeEstimator.estimateFee(
                 inputs = selected.size,
                 outputs = 2, // pagamento + change
+                spendType = spendType,
                 feeRateSatPerVbyte = feeRateSatPerVbyte
             )
 

@@ -16,11 +16,13 @@ data class WalletData(
     val walletName: String,
 
     // -----------------------------
-    // Segredo / Seed
+    // Segredo / Seed — null quando isWatchOnly (importada só por xpub, sem
+    // acesso à chave privada nesta carteira/dispositivo)
     // -----------------------------
-    val mnemonic: List<String>,
-    val passphrase: String,
+    val mnemonic: List<String>?,
+    val passphrase: String?,
     val mnemonicVerified: Boolean,
+    val isWatchOnly: Boolean,
 
     // -----------------------------
     // Identidade BIP32
@@ -37,12 +39,21 @@ data class WalletData(
     // Chaves públicas
     // -----------------------------
     val xpub: String?,
+    /** "[fingerprintHex/purpose'/coin'/0']xpub" — mesma string já usada nos
+     *  descriptors, exportável via QR pra parear uma carteira watch-only
+     *  noutro dispositivo sem digitação manual. */
+    val accountOrigin: String?,
 
     // -----------------------------
     // Índices HD (estado mutável)
     // -----------------------------
     var nextExternalIndex: Int,
     var nextInternalIndex: Int,
+
+    // -----------------------------
+    // UTXOs congelados ("txid:vout"), fora da seleção automática e manual
+    // -----------------------------
+    val frozenUtxoKeys: Set<String>,
 
     // -----------------------------
     // JSON bruto (preservação futura)

@@ -17,7 +17,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="🔑 RESTAURAR WALLET"
+            android:text="👁 IMPORTAR WATCH-ONLY"
             android:textSize="13sp"
             style="@style/Gameboy.Title"
             android:layout_marginBottom="20dp" />
@@ -35,69 +35,18 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:padding="14dp"
-                android:text="⚠️  Informe exatamente as 24 palavras e a passphrase que você anotou na criação."
+                android:text="⚠️  Essa carteira só vê saldo/endereços, sem poder assinar sozinha — pra enviar, você vai precisar de um segundo aparelho com a seed (assinatura air-gapped)."
                 android:textSize="13sp"
                 android:textColor="@color/bitcoin_orange"
                 android:lineSpacingExtra="3dp" />
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Label Mnemonic -->
+        <!-- Label chave pública -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="MNEMONIC (12 OU 24 PALAVRAS)"
-            android:textSize="10sp"
-            style="@style/Gameboy.Label"
-            android:layout_marginBottom="8dp" />
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="palavra1 palavra2 palavra3…"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-            android:layout_marginBottom="8dp"
-            app:boxStrokeColor="@color/gb_border_soft"
-            app:hintTextColor="@color/gb_border_soft">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_mnemonic"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textMultiLine|textNoSuggestions"
-                android:textColor="@color/gb_border"
-                android:fontFamily="monospace"
-                android:textSize="13sp"
-                android:minLines="4"
-                android:gravity="top"
-                android:paddingTop="14dp"
-                android:paddingBottom="14dp" />
-
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- Contador de palavras -->
-        <TextView
-            android:id="@+id/tv_word_count"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="0 palavras"
-            android:textSize="12sp"
-            android:textColor="@color/gb_border_soft"
-            android:gravity="end"
-            android:layout_marginBottom="28dp" />
-
-        <!-- Divider -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/gb_border_soft"
-            android:layout_marginBottom="28dp" />
-
-        <!-- Label Passphrase -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="PASSPHRASE"
+            android:text="CHAVE PÚBLICA"
             android:textSize="10sp"
             style="@style/Gameboy.Label"
             android:layout_marginBottom="8dp" />
@@ -105,7 +54,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Se sua wallet foi criada sem passphrase, deixe em branco."
+            android:text="Cole a string exportada em “Ver Chave Pública” na carteira original (formato [fingerprint/caminho]xpub…)."
             android:textSize="12sp"
             android:textColor="@color/gb_border_soft"
             android:layout_marginBottom="8dp" />
@@ -113,20 +62,24 @@
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Ex: pokemon:74:Geodude (ou sua passphrase personalizada)"
+            android:hint="[a9fe848d/84'/0'/0']xpub…"
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_marginBottom="28dp"
             app:boxStrokeColor="@color/gb_border_soft"
             app:hintTextColor="@color/gb_border_soft">
 
             <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_passphrase_restore"
+                android:id="@+id/et_account_origin"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textVisiblePassword"
+                android:inputType="textMultiLine|textNoSuggestions"
                 android:textColor="@color/gb_border"
                 android:fontFamily="monospace"
-                android:singleLine="true" />
+                android:textSize="12sp"
+                android:minLines="3"
+                android:gravity="top"
+                android:paddingTop="14dp"
+                android:paddingBottom="14dp" />
 
         </com.google.android.material.textfield.TextInputLayout>
 
@@ -147,7 +100,7 @@
             android:layout_marginBottom="10dp" />
 
         <com.google.android.material.chip.ChipGroup
-            android:id="@+id/chip_group_network"
+            android:id="@+id/chip_group_network_watchonly"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:singleLine="true"
@@ -156,7 +109,7 @@
             android:layout_marginBottom="28dp">
 
             <com.google.android.material.chip.Chip
-                android:id="@+id/chip_mainnet"
+                android:id="@+id/chip_watchonly_mainnet"
                 style="@style/Widget.MaterialComponents.Chip.Choice"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -164,7 +117,7 @@
                 android:checked="true" />
 
             <com.google.android.material.chip.Chip
-                android:id="@+id/chip_testnet"
+                android:id="@+id/chip_watchonly_testnet"
                 style="@style/Widget.MaterialComponents.Chip.Choice"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -197,7 +150,7 @@
             android:layout_marginBottom="8dp" />
 
         <com.google.android.material.chip.ChipGroup
-            android:id="@+id/chip_group_address_type_restore"
+            android:id="@+id/chip_group_address_type_watchonly"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:singleLine="true"
@@ -206,7 +159,7 @@
             android:layout_marginBottom="28dp">
 
             <com.google.android.material.chip.Chip
-                android:id="@+id/chip_restore_native_segwit"
+                android:id="@+id/chip_watchonly_native_segwit"
                 style="@style/Widget.MaterialComponents.Chip.Choice"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -214,7 +167,7 @@
                 android:checked="true" />
 
             <com.google.android.material.chip.Chip
-                android:id="@+id/chip_restore_taproot"
+                android:id="@+id/chip_watchonly_taproot"
                 style="@style/Widget.MaterialComponents.Chip.Choice"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -248,7 +201,7 @@
             app:hintTextColor="@color/gb_border_soft">
 
             <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_wallet_name_restore"
+                android:id="@+id/et_wallet_name_watchonly"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="text"
@@ -259,7 +212,7 @@
 
         <!-- Progresso -->
         <ProgressBar
-            android:id="@+id/progress_restore"
+            android:id="@+id/progress_watchonly"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
@@ -269,7 +222,7 @@
 
         <!-- Erro -->
         <TextView
-            android:id="@+id/tv_restore_error"
+            android:id="@+id/tv_watchonly_error"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="@color/error_red"
@@ -285,7 +238,7 @@
             android:orientation="horizontal">
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_cancel_restore"
+                android:id="@+id/btn_cancel_watchonly"
                 style="@style/Gameboy.Button.Outline"
                 android:layout_width="0dp"
                 android:layout_height="56dp"
@@ -295,12 +248,12 @@
                 android:textSize="12sp" />
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_confirm_restore"
+                android:id="@+id/btn_confirm_watchonly"
                 style="@style/Gameboy.Button"
                 android:layout_width="0dp"
                 android:layout_height="56dp"
                 android:layout_weight="1"
-                android:text="Restaurar"
+                android:text="Importar"
                 android:textSize="12sp"
                 app:backgroundTint="@color/accent_yellow" />
 

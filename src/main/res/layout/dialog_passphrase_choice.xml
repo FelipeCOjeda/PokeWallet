@@ -31,6 +31,34 @@
             android:lineSpacingExtra="3dp"
             android:layout_marginBottom="24dp" />
 
+        <!-- Nome da carteira (opcional) -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="NOME DA CARTEIRA"
+            android:textSize="10sp"
+            style="@style/Gameboy.Label"
+            android:layout_marginBottom="10dp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Opcional — em branco usa o nome do Pokémon"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_marginBottom="24dp"
+            app:boxStrokeColor="@color/gb_border_soft"
+            app:hintTextColor="@color/gb_border_soft">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_wallet_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:textColor="@color/gb_border"
+                android:singleLine="true" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
         <!-- Label Contagem de palavras -->
         <TextView
             android:layout_width="wrap_content"

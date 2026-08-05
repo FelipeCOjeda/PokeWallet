@@ -53,12 +53,14 @@ object WalletRestore {
             .put("passphrase",           passphrase)
             .put("fingerprint",          fingerprintHex)
             .put("xpub",                 xpub)
+            .put("accountOrigin",        derivationPrefix)
             .put("externalDescriptor",   externalDescriptor)
             .put("internalDescriptor",   internalDescriptor)
             .put("nextExternalIndex",    0)
             .put("nextInternalIndex",    0)
             .put("createdAt",            Instant.now().toString())
             .put("mnemonicVerified",     true)
+            .put("isWatchOnly",          false)
 
         WalletStorage.saveRaw(json)
     }

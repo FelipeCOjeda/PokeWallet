@@ -118,6 +118,7 @@ object WalletInit {
             .put("passphrase", passphrase)
             .put("fingerprint", fingerprintHex)
             .put("xpub", xpub)
+            .put("accountOrigin", derivationPrefix)
             .put("externalDescriptor", externalDescriptor)
             .put("internalDescriptor", internalDescriptor)
             .put("nextExternalIndex", 0)
@@ -125,6 +126,7 @@ object WalletInit {
             .put("createdAt", Instant.now().toString())
             .put("mnemonicVerified", false)
             .put("passphraseMode", passphraseMode.tag())
+            .put("isWatchOnly", false)
 
         WalletStorage.saveRaw(json)
 

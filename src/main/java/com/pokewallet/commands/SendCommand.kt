@@ -14,6 +14,7 @@ object SendCommand {
         val forceTestnet = args.contains("--testnet")
 
         val wallet  = WalletStorage.load()
+        require(!wallet.isWatchOnly) { "Esta carteira é watch-only (sem seed) — comando indisponível no CLI." }
         val xpub    = requireNotNull(wallet.xpub) { "xpub não encontrado — rode wallet-init primeiro" }
         val network = when {
             forceTestnet               -> com.pokewallet.crypto.Network.TESTNET
@@ -25,7 +26,7 @@ object SendCommand {
         }
 
         // ── Seed ───────────────────────────────────────────────────
-        val seed = SeedDerivation.fromMnemonic(wallet.mnemonic, wallet.passphrase)
+        val seed = SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
         try {
             runSend(args, destination, sweep, xpub, network, seed)
         } finally {
@@ -104,7 +105,8 @@ object SendCommand {
                 requestedAmount    = requestedAmount,
                 sweep              = sweep,
                 inputCount         = spendable.size,
-                feeRateSatPerVbyte = feeRate
+                feeRateSatPerVbyte = feeRate,
+                spendType          = SpendType.BIP84 // CLI só deriva BIP84 (ver KeyDerivation.bip84 acima)
             )
             val sendAmount = plan.sendAmount
 

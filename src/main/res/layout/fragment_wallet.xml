@@ -16,14 +16,39 @@
         android:padding="16dp"
         android:gravity="center_vertical">
 
-        <TextView
+        <LinearLayout
+            android:id="@+id/row_home_wallet_switcher"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="⚡ POKéWALLET"
-            android:textSize="12sp"
-            style="@style/Gameboy.Title"
-            android:textColor="@color/primary_red" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:id="@+id/tv_home_wallet_name"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxWidth="180dp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="⚡ POKéWALLET"
+                android:textSize="12sp"
+                style="@style/Gameboy.Title"
+                android:textColor="@color/primary_red" />
+
+            <TextView
+                android:id="@+id/tv_home_switch_chevron"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="🔽"
+                android:textSize="9sp"
+                android:textColor="@color/primary_red"
+                android:visibility="gone" />
+
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -198,12 +223,139 @@
                         style="@style/Gameboy.Label"
                         android:layout_marginBottom="16dp" />
 
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:id="@+id/tv_wallet_name"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:textSize="13sp"
+                            android:textColor="@color/gb_border_soft" />
+
+                        <TextView
+                            android:id="@+id/btn_rename_wallet"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="✏️"
+                            android:textSize="16sp"
+                            android:padding="6dp"
+                            android:clickable="true"
+                            android:focusable="true" />
+
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1.5dp"
+                        android:background="@color/gb_border_soft"
+                        android:layout_marginVertical="12dp" />
+
+                    <!-- Trocar/criar carteira -->
                     <TextView
-                        android:id="@+id/tv_wallet_name"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textSize="13sp"
-                        android:textColor="@color/gb_border_soft" />
+                        android:text="🗂 CARTEIRAS"
+                        android:textSize="10sp"
+                        style="@style/Gameboy.Label"
+                        android:layout_marginBottom="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="12dp">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_switch_wallet"
+                            style="@style/Gameboy.Button.Outline"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="6dp"
+                            android:text="🔄 Trocar"
+                            android:textSize="10sp"
+                            android:visibility="gone" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_new_wallet"
+                            style="@style/Gameboy.Button.Outline"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_weight="1"
+                            android:layout_marginStart="6dp"
+                            android:text="➕ Nova Carteira"
+                            android:textSize="10sp" />
+
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1.5dp"
+                        android:background="@color/gb_border_soft"
+                        android:layout_marginVertical="12dp" />
+
+                    <!-- Endereços derivados -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🗺 ENDEREÇOS"
+                        android:textSize="10sp"
+                        style="@style/Gameboy.Label"
+                        android:layout_marginBottom="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="12dp">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_view_addresses"
+                            style="@style/Gameboy.Button.Outline"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="6dp"
+                            android:text="📍 Endereços"
+                            android:textSize="10sp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_view_utxos"
+                            style="@style/Gameboy.Button.Outline"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_weight="1"
+                            android:layout_marginStart="6dp"
+                            android:text="🪙 UTXOs"
+                            android:textSize="10sp" />
+
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_view_public_key"
+                        style="@style/Gameboy.Button.Outline"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginBottom="12dp"
+                        android:text="🔑 Ver Chave Pública"
+                        android:textSize="10sp" />
+
+                    <!-- Assinatura air-gapped — só faz sentido numa carteira com
+                         seed (assina PSBT de uma carteira watch-only pareada);
+                         escondido em runtime pra carteira watch-only -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_sign_airgapped_psbt"
+                        style="@style/Gameboy.Button.Outline"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginBottom="12dp"
+                        android:text="🔏 Assinar PSBT (air-gapped)"
+                        android:textSize="10sp" />
 
                     <View
                         android:layout_width="match_parent"
@@ -212,6 +364,7 @@
                         android:layout_marginVertical="12dp" />
 
                     <TextView
+                        android:id="@+id/tv_seed_backup_status"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="🔐  Backup da seed: Verificado ✓"

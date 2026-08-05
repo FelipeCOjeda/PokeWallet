@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Metade de cima (vermelha) -->
+    <path
+        android:pathData="M2,12 A10,10 0 0,1 22,12 Z"
+        android:fillColor="#E3350D" />
+
+    <!-- Metade de baixo (branca) -->
+    <path
+        android:pathData="M22,12 A10,10 0 0,1 2,12 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Contorno externo -->
+    <path
+        android:pathData="M12,2 A10,10 0 1,1 11.99,2 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#1B1B1B"
+        android:strokeWidth="1" />
+
+    <!-- Faixa central preta -->
+    <path
+        android:pathData="M1.3,10.8 L22.7,10.8 L22.7,13.2 L1.3,13.2 Z"
+        android:fillColor="#1B1B1B" />
+
+    <!-- Botão central branco com contorno -->
+    <path
+        android:pathData="M12,9.3 A2.7,2.7 0 1,1 11.99,9.3 Z"
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#1B1B1B"
+        android:strokeWidth="1" />
+</vector>

@@ -6,7 +6,10 @@ import java.io.File
 object WalletStorage {
 
     var filesDir: File = File(".")
-        set(value) {
+        set(value) = synchronized(lock) {
+            // Sincronizado no mesmo lock de load()/save() — troca de carteira
+            // (reatribuir filesDir) nunca pode cair no meio de uma sequência
+            // carregar→mutar→salvar de outra chamada em andamento.
             field = value
             cachedRawJson = null // muda o diretório -> cache do wallet.json antigo não vale mais
         }
@@ -91,30 +94,61 @@ object WalletStorage {
             dirty = true
         }
 
+        if (!json.has("frozenUtxos")) {
+            json.put("frozenUtxos", org.json.JSONArray())
+            dirty = true
+        }
+
+        if (!json.has("isWatchOnly")) {
+            json.put("isWatchOnly", false)
+            dirty = true
+        }
+
+        if (!json.has("accountOrigin")) {
+            // wallet.json de antes desse campo existir: sintetiza uma vez a
+            // partir do externalDescriptor já salvo (mesma string "[fp/path]xpub"
+            // que fica dentro de wpkh(...)/tr(...)) — carteira watch-only nunca
+            // cai aqui, ela já grava accountOrigin direto na criação.
+            val desc = json.optString("externalDescriptor", "")
+            Regex("\\[[^\\]]+\\][a-zA-Z0-9]+").find(desc)?.let { match ->
+                json.put("accountOrigin", match.value)
+                dirty = true
+            }
+        }
+
         if (dirty) {
             val migrated = json.toString(2)
             walletFile.writeBytes(WalletEncryption.encrypt(migrated))
             cachedRawJson = migrated
         }
 
-        val mnemonic = json
+        val isWatchOnly = json.optBoolean("isWatchOnly", false)
+
+        val mnemonic = if (isWatchOnly) null else json
             .getString("mnemonic")
             .trim()
             .split(Regex("\\s+"))
+        val passphrase = if (isWatchOnly) null else json.getString("passphrase")
 
         val fingerprintHex = json.getString("fingerprint")
+
+        val frozenArray = json.optJSONArray("frozenUtxos") ?: org.json.JSONArray()
+        val frozenKeys = (0 until frozenArray.length()).map { frozenArray.getString(it) }.toSet()
 
         return WalletData(
             walletName         = json.getString("walletName"),
             mnemonic           = mnemonic,
-            passphrase         = json.getString("passphrase"),
+            passphrase         = passphrase,
             mnemonicVerified   = json.getBoolean("mnemonicVerified"),
+            isWatchOnly        = isWatchOnly,
             fingerprint        = fingerprintHex,
             network            = Network.valueOf(json.getString("network")),
             spendType          = SpendType.valueOf(json.getString("spendType")),
             xpub               = json.optString("xpub", null),
+            accountOrigin      = json.optString("accountOrigin", null),
             nextExternalIndex  = json.getInt("nextExternalIndex"),
             nextInternalIndex  = json.getInt("nextInternalIndex"),
+            frozenUtxoKeys     = frozenKeys,
             raw                = json
         )
     }
@@ -157,6 +191,20 @@ object WalletStorage {
         wallet.nextExternalIndex = index + 1
         saveLocked(wallet)
         index
+    }
+
+    /**
+     * Congela/descongela um UTXO ("txid:vout") — mesma seção crítica
+     * load→muta→save de reserveNext*Index(), pra duas chamadas concorrentes
+     * (ou uma troca de carteira no meio) nunca perderem uma da outra.
+     */
+    fun setUtxoFrozen(key: String, frozen: Boolean): Unit = synchronized(lock) {
+        val wallet = loadLocked()
+        val current = wallet.raw.optJSONArray("frozenUtxos") ?: org.json.JSONArray()
+        val keys = (0 until current.length()).mapTo(LinkedHashSet()) { current.getString(it) }
+        if (frozen) keys.add(key) else keys.remove(key)
+        wallet.raw.put("frozenUtxos", org.json.JSONArray(keys))
+        saveLocked(wallet)
     }
 
     fun delete(): Boolean = synchronized(lock) {
