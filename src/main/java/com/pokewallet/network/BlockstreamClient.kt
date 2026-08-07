@@ -8,9 +8,32 @@ import java.net.URL
 
 object BlockstreamClient {
 
-    fun baseUrl(network: Network): String = when (network) {
-        Network.MAINNET -> "https://blockstream.info/api"
-        Network.TESTNET -> "https://mempool.space/testnet/api"
+    /**
+     * Provedores Esplora, em ORDEM de preferência — Blockstream e
+     * mempool.space implementam a MESMA API (mesmos endpoints/formato de
+     * resposta), então dá pra alternar entre eles sem mudar nenhum parsing.
+     * Existe pra REDUNDÂNCIA: cada provedor tem seu próprio limite de rate
+     * limit por IP (Blockstream: 700 req/hora — foi exatamente esse limite
+     * que o app bateu em campo, ver getWithFallback()); se o primeiro
+     * falhar (429, fora do ar, timeout), tenta o próximo antes de desistir.
+     */
+    private fun baseUrls(network: Network): List<String> = when (network) {
+        Network.MAINNET -> listOf(
+            "https://blockstream.info/api",
+            "https://mempool.space/api",
+            // Espelho Esplora comunitário (emzy, conhecido na comunidade
+            // Bitcoin/Lightning alemã) — mesmo formato de resposta,
+            // confirmado batendo os mesmos endpoints antes de entrar aqui.
+            // 3ª camada: só é tentado se Blockstream E mempool.space
+            // falharem os dois.
+            "https://mempool.emzy.de/api"
+        )
+        Network.TESTNET -> listOf(
+            "https://mempool.space/testnet/api",
+            "https://blockstream.info/testnet/api"
+            // mempool.emzy.de/testnet testado e fora do ar (502) no momento
+            // desta mudança — não incluído até confirmar estabilidade.
+        )
         Network.REGTEST -> error("REGTEST não possui API pública — use TESTNET ou MAINNET")
     }
 
@@ -66,7 +89,7 @@ object BlockstreamClient {
     // ── API calls ─────────────────────────────────────
 
     fun getAddressStats(address: String, network: Network): AddressStats {
-        val json    = JSONObject(get("${baseUrl(network)}/address/$address"))
+        val json    = JSONObject(getWithFallback(network, "/address/$address"))
         val chain   = json.getJSONObject("chain_stats")
         val mempool = json.getJSONObject("mempool_stats")
         return AddressStats(
@@ -83,7 +106,7 @@ object BlockstreamClient {
     }
 
     fun getUtxos(address: String, network: Network): List<Utxo> {
-        val array = JSONArray(get("${baseUrl(network)}/address/$address/utxo"))
+        val array = JSONArray(getWithFallback(network, "/address/$address/utxo"))
         return (0 until array.length()).map { i ->
             val obj    = array.getJSONObject(i)
             val status = obj.getJSONObject("status")
@@ -98,7 +121,7 @@ object BlockstreamClient {
     }
 
     fun getFeeEstimates(network: Network): FeeEstimates {
-        val json = JSONObject(get("${baseUrl(network)}/fee-estimates"))
+        val json = JSONObject(getWithFallback(network, "/fee-estimates"))
         val byBlockTarget = sortedMapOf<Int, Double>()
         json.keys().forEach { key ->
             key.toIntOrNull()?.let { target -> byBlockTarget[target] = json.getDouble(key) }
@@ -112,11 +135,11 @@ object BlockstreamClient {
     }
 
     fun broadcast(rawHex: String, network: Network): String =
-        post("${baseUrl(network)}/tx", rawHex).trim()
+        postWithFallback(network, "/tx", rawHex).trim()
 
     fun getAddressTxs(address: String, network: Network): List<JSONObject> {
         return try {
-            val arr = JSONArray(get("${baseUrl(network)}/address/$address/txs"))
+            val arr = JSONArray(getWithFallback(network, "/address/$address/txs"))
             (0 until arr.length()).map { arr.getJSONObject(it) }
         } catch (_: Exception) { emptyList() }
     }
@@ -154,22 +177,78 @@ object BlockstreamClient {
         }
     }
 
+    // ── Redundância entre provedores ──────────────────
+
+    /**
+     * Tenta cada provedor de [baseUrls] em ordem, caindo pro próximo em
+     * QUALQUER falha (429, timeout, fora do ar) — não só rate limit
+     * especificamente, redundância genérica é mais robusta. Só propaga
+     * erro se TODOS os provedores falharem — a mensagem final lista o que
+     * aconteceu com CADA UM (host: motivo), em vez de só o último, pra dar
+     * diagnóstico de verdade em vez de "bateu rate limit" genérico quando
+     * pode ser timeout/DNS/etc num provedor específico.
+     */
+    private fun getWithFallback(network: Network, path: String): String {
+        val failures = mutableListOf<String>()
+        for (base in baseUrls(network)) {
+            try {
+                return get(base + path)
+            } catch (e: Exception) {
+                failures += "${hostOf(base)}: ${e.message}"
+            }
+        }
+        error("Todos os provedores falharam — ${failures.joinToString(" | ")}")
+    }
+
+    private fun postWithFallback(network: Network, path: String, body: String): String {
+        val failures = mutableListOf<String>()
+        for (base in baseUrls(network)) {
+            try {
+                return post(base + path, body)
+            } catch (e: Exception) {
+                failures += "${hostOf(base)}: ${e.message}"
+            }
+        }
+        error("Todos os provedores falharam — ${failures.joinToString(" | ")}")
+    }
+
+    private fun hostOf(baseUrl: String): String = try {
+        URL(baseUrl).host
+    } catch (_: Exception) {
+        baseUrl
+    }
+
     // ── HTTP primitives ───────────────────────────────
 
+    // NÃO chama conn.disconnect() no caminho de sucesso de propósito: um scan
+    // faz dezenas de GETs sequenciais pro MESMO host (blockstream.info/
+    // mempool.space) — disconnect() força descartar a conexão TLS em vez de
+    // devolvê-la pro pool de keep-alive do Android, e cada request seguinte
+    // paga handshake TCP+TLS inteiro do zero (o gargalo real reportado como
+    // "demora demais"). Isso é diferente do problema já revertido antes
+    // (commit b0a572d — esse era sobre abrir 8 conexões SIMULTÂNEAS e
+    // esbarrar em limite de conexões concorrentes por host; aqui as
+    // chamadas continuam sequenciais, só passam a reusar a mesma conexão
+    // em vez de abrir uma nova a cada vez). disconnect() só no caminho de
+    // erro, onde não faz sentido devolver uma conexão possivelmente quebrada
+    // pro pool.
     private fun get(url: String): String {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 10_000
         conn.readTimeout    = 15_000
         conn.requestMethod  = "GET"
-        return try {
-            val code = conn.responseCode
-            check(code in 200..299) {
-                "Blockstream API erro $code: ${conn.errorStream?.bufferedReader()?.readText()}"
-            }
-            conn.inputStream.bufferedReader().readText()
-        } finally {
+        val code = try {
+            conn.responseCode
+        } catch (e: Exception) {
             conn.disconnect()
+            throw e
         }
+        if (code !in 200..299) {
+            val err = conn.errorStream?.bufferedReader()?.readText()
+            conn.disconnect()
+            error("Blockstream API erro $code: $err")
+        }
+        return conn.inputStream.bufferedReader().use { it.readText() }
     }
 
     private fun post(url: String, body: String): String {

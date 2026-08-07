@@ -87,6 +87,23 @@ object WalletStorage {
             dirty = true
         }
 
+        if (!json.has("activeExternalIndices")) {
+            // Carteira já existia ANTES desse campo — nextExternalIndex/
+            // nextInternalIndex podem já ser > 0 (uso real, endereços com
+            // saldo) mas não há como saber QUAIS índices historicamente
+            // tiveram atividade. needsFullRescan=true força UMA varredura
+            // completa (índice 0 até o gap limit, igual sempre foi) no
+            // PRÓXIMO scan pra reconstruir essa lista com segurança — sem
+            // isso, o scan incremental só olharia a partir de
+            // nextExternalIndex em diante e endereços antigos com saldo
+            // ficariam invisíveis pra sempre. Só essa PRIMEIRA varredura
+            // paga o custo cheio; dali em diante volta a ser incremental.
+            json.put("activeExternalIndices", org.json.JSONArray())
+            json.put("activeInternalIndices", org.json.JSONArray())
+            json.put("needsFullRescan", true)
+            dirty = true
+        }
+
         if (!json.has("mnemonicVerified")) {
             // wallet.json de antes desse campo existir: trata como não-verificada —
             // é o lado seguro (pior caso, pede pra confirmar de novo; não trava o acesso).
@@ -101,6 +118,15 @@ object WalletStorage {
 
         if (!json.has("isWatchOnly")) {
             json.put("isWatchOnly", false)
+            dirty = true
+        }
+
+        if (!json.has("hasVerifiedFingerprint")) {
+            // wallet.json de antes desse campo existir: seeded ou watch-only
+            // pelo formato completo "[fp/path]xpub" sempre tiveram o
+            // fingerprint real da chave mestra — só o import por xpub pura
+            // (novo) grava false explicitamente na criação.
+            json.put("hasVerifiedFingerprint", true)
             dirty = true
         }
 
@@ -135,6 +161,11 @@ object WalletStorage {
         val frozenArray = json.optJSONArray("frozenUtxos") ?: org.json.JSONArray()
         val frozenKeys = (0 until frozenArray.length()).map { frozenArray.getString(it) }.toSet()
 
+        fun intSet(field: String): Set<Int> {
+            val arr = json.optJSONArray(field) ?: return emptySet()
+            return (0 until arr.length()).mapTo(mutableSetOf()) { arr.getInt(it) }
+        }
+
         return WalletData(
             walletName         = json.getString("walletName"),
             mnemonic           = mnemonic,
@@ -142,12 +173,16 @@ object WalletStorage {
             mnemonicVerified   = json.getBoolean("mnemonicVerified"),
             isWatchOnly        = isWatchOnly,
             fingerprint        = fingerprintHex,
+            hasVerifiedFingerprint = json.optBoolean("hasVerifiedFingerprint", true),
             network            = Network.valueOf(json.getString("network")),
             spendType          = SpendType.valueOf(json.getString("spendType")),
             xpub               = json.optString("xpub", null),
             accountOrigin      = json.optString("accountOrigin", null),
             nextExternalIndex  = json.getInt("nextExternalIndex"),
             nextInternalIndex  = json.getInt("nextInternalIndex"),
+            activeExternalIndices = intSet("activeExternalIndices"),
+            activeInternalIndices = intSet("activeInternalIndices"),
+            needsFullRescan    = json.optBoolean("needsFullRescan", false),
             frozenUtxoKeys     = frozenKeys,
             raw                = json
         )
@@ -158,6 +193,9 @@ object WalletStorage {
     private fun saveLocked(wallet: WalletData) {
         wallet.raw.put("nextExternalIndex", wallet.nextExternalIndex)
         wallet.raw.put("nextInternalIndex", wallet.nextInternalIndex)
+        wallet.raw.put("activeExternalIndices", org.json.JSONArray(wallet.activeExternalIndices))
+        wallet.raw.put("activeInternalIndices", org.json.JSONArray(wallet.activeInternalIndices))
+        wallet.raw.put("needsFullRescan", wallet.needsFullRescan)
         val serialized = wallet.raw.toString(2)
         walletFile.writeBytes(WalletEncryption.encrypt(serialized))
         cachedRawJson = serialized
@@ -168,6 +206,25 @@ object WalletStorage {
         val serialized = json.toString(2)
         walletFile.writeBytes(WalletEncryption.encrypt(serialized))
         cachedRawJson = serialized
+    }
+
+    /**
+     * Lê só o campo isWatchOnly do wallet.json de um diretório específico —
+     * SEM tocar em [filesDir]/cache (que representam a carteira ATIVA).
+     * Usado pra listar o tipo de cada carteira conhecida (ex.: pokébola
+     * cinza/colorida na Mochila) sem trocar qual está ativa nem interferir
+     * numa troca de carteira em andamento noutra thread.
+     */
+    fun peekIsWatchOnly(dir: File): Boolean {
+        val file = File(dir, "wallet.json")
+        if (!file.exists()) return false
+        val bytes = file.readBytes()
+        val decrypted = if (bytes.isNotEmpty() && bytes[0] == WalletEncryption.MAGIC) {
+            WalletEncryption.decrypt(bytes)
+        } else {
+            String(bytes, Charsets.UTF_8)
+        }
+        return JSONObject(decrypted).optBoolean("isWatchOnly", false)
     }
 
     /**

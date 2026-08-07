@@ -107,10 +107,19 @@ object WalletCreationFlow {
         dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
     }
 
-    fun showRestoreDialog(fragment: Fragment, viewModel: WalletViewModel) {
+    /** [onScanRequested] dispara o scanner de QR da fragment CHAMADORA
+     *  (SetupFragment na tela inicial, WalletFragment em "Nova carteira")
+     *  — o launcher de QR precisa ser registrado no onCreate/init da
+     *  fragment (regra do Android), não dá pra criar um aqui na hora. */
+    fun showRestoreDialog(
+        fragment: Fragment,
+        viewModel: WalletViewModel,
+        onScanRequested: (prompt: String, onResult: (String) -> Unit) -> Unit
+    ) {
         val context = fragment.requireContext()
         val dialogView      = fragment.layoutInflater.inflate(R.layout.dialog_restore, null)
         val etMnemonic      = dialogView.findViewById<TextInputEditText>(R.id.et_mnemonic)
+        val btnScanRestore  = dialogView.findViewById<MaterialButton>(R.id.btn_scan_restore)
         val tvWordCount     = dialogView.findViewById<TextView>(R.id.tv_word_count)
         val etPassphrase    = dialogView.findViewById<TextInputEditText>(R.id.et_passphrase_restore)
         val etWalletName    = dialogView.findViewById<TextInputEditText>(R.id.et_wallet_name_restore)
@@ -136,7 +145,15 @@ object WalletCreationFlow {
 
         etMnemonic.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
-                val words = s?.toString()?.trim()?.split(Regex("\\s+"))?.filter { it.isNotEmpty() } ?: emptyList()
+                val raw = s?.toString()?.trim() ?: ""
+                if (looksLikeAccountOrigin(raw)) {
+                    // Xpub colada — não é uma "contagem de palavras" de verdade,
+                    // só sinaliza que o app reconheceu o formato.
+                    tvWordCount.text = "chave pública reconhecida — importa como watch-only"
+                    tvWordCount.setTextColor(ContextCompat.getColor(context, R.color.green_status))
+                    return
+                }
+                val words = raw.split(Regex("\\s+")).filter { it.isNotEmpty() }
                 val count = words.size
                 tvWordCount.text = "$count palavras"
                 tvWordCount.setTextColor(ContextCompat.getColor(context,
@@ -145,6 +162,12 @@ object WalletCreationFlow {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
+
+        btnScanRestore.setOnClickListener {
+            onScanRequested("Aponte para o QR (mnemonic ou xpub)") { scanned ->
+                etMnemonic.setText(scanned.trim())
+            }
+        }
 
         val dialog = AlertDialog.Builder(context, R.style.Theme_PokéWallet_Dialog)
             .setView(dialogView)
@@ -162,12 +185,30 @@ object WalletCreationFlow {
 
         btnConfirm.setOnClickListener {
             val raw   = etMnemonic.text?.toString()?.trim() ?: ""
-            val words = raw.split(Regex("\\s+")).filter { it.isNotEmpty() }
             val passphrase = etPassphrase.text?.toString()?.trim() ?: ""
             val customName = etWalletName.text?.toString()?.trim()
 
+            if (raw.isBlank()) {
+                tvError.text       = "Cole o mnemonic (12/24 palavras) ou a xpub da carteira."
+                tvError.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+
+            if (looksLikeAccountOrigin(raw)) {
+                // Xpub/chave pública — importa como watch-only, mesmo botão
+                // "Recuperar carteira" (não faz sentido pedir passphrase, não
+                // há seed nesse caminho).
+                tvError.visibility  = View.GONE
+                progressRestore.visibility = View.VISIBLE
+                btnConfirm.isEnabled = false
+                btnCancel.isEnabled  = false
+                viewModel.importWatchOnly(raw, selectedNetwork, selectedSpendType, customName)
+                return@setOnClickListener
+            }
+
+            val words = raw.split(Regex("\\s+")).filter { it.isNotEmpty() }
             if (words.size != 12 && words.size != 24) {
-                tvError.text       = "Informe 12 ou 24 palavras (${words.size} fornecidas)."
+                tvError.text       = "Informe 12 ou 24 palavras (ou uma xpub) — ${words.size} palavra(s) fornecida(s)."
                 tvError.visibility = View.VISIBLE
                 return@setOnClickListener
             }
@@ -211,8 +252,81 @@ object WalletCreationFlow {
             }
         }
 
+        // Mesmo tratamento de watchOnlyImportState de showWatchOnlyImportDialog()
+        // — esta tela agora também pode disparar um import por xpub (campo
+        // reconhecendo o formato sozinho), então precisa lidar com os mesmos
+        // estados, incluindo o conflito "já existe com chave neste aparelho".
+        fragment.viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.watchOnlyImportState.collectLatest { state ->
+                when (state) {
+                    is WatchOnlyImportState.Importing -> {
+                        progressRestore.visibility = View.VISIBLE
+                        btnConfirm.isEnabled       = false
+                    }
+                    is WatchOnlyImportState.Success -> {
+                        dialog.dismiss()
+                        viewModel.resetWatchOnlyImportState()
+                    }
+                    is WatchOnlyImportState.Error -> {
+                        progressRestore.visibility = View.GONE
+                        btnConfirm.isEnabled       = true
+                        btnCancel.isEnabled        = true
+                        tvError.text               = state.message
+                        tvError.visibility         = View.VISIBLE
+                        viewModel.resetWatchOnlyImportState()
+                    }
+                    is WatchOnlyImportState.ConflictWithKeyedWallet -> {
+                        progressRestore.visibility = View.GONE
+                        btnConfirm.isEnabled       = true
+                        btnCancel.isEnabled        = true
+                        viewModel.resetWatchOnlyImportState()
+                        val fingerprint = state.fingerprint
+                        AlertDialog.Builder(context, R.style.Theme_PokéWallet_Dialog)
+                            .setTitle("⚠️ Essa carteira já existe com a chave")
+                            .setMessage(
+                                "Essa chave pública é da MESMA carteira que já está neste " +
+                                "aparelho com a seed (carteira principal).\n\n" +
+                                "Pra importar como watch-only, a versão com chave precisa ser " +
+                                "esquecida antes (o app não guarda as duas ao mesmo tempo). " +
+                                "Antes de confirmar, tenha certeza absoluta de que o mnemonic " +
+                                "e a passphrase Pokémon dessa carteira estão anotados em local " +
+                                "seguro — é a única forma de recuperar o controle total dela " +
+                                "depois.\n\nEsquecer a carteira principal e importar como watch-only?"
+                            )
+                            .setPositiveButton("Esquecer e importar") { _, _ ->
+                                val raw2        = etMnemonic.text?.toString()?.trim() ?: ""
+                                val customName2 = etWalletName.text?.toString()?.trim()
+                                progressRestore.visibility = View.VISIBLE
+                                btnConfirm.isEnabled = false
+                                btnCancel.isEnabled  = false
+                                viewModel.importWatchOnly(
+                                    raw2, selectedNetwork, selectedSpendType, customName2,
+                                    forgetKeyedFingerprint = fingerprint
+                                )
+                            }
+                            .setNegativeButton("Cancelar", null)
+                            .show()
+                    }
+                    is WatchOnlyImportState.Idle -> {}
+                }
+            }
+        }
+
         dialog.show()
         dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+    }
+
+    /** Detecta se o texto colado em "mnemonic" é na verdade uma chave pública
+     *  (xpub pura ou "[fingerprint/path]xpub") em vez de palavras — mesmos
+     *  prefixos aceitos por WalletWatchOnlyImport.parse(). Heurística barata
+     *  de UI: um token único (sem espaço) começando com "[" ou um prefixo de
+     *  xpub — a validação de verdade (checksum, formato completo) acontece
+     *  dentro do import em si. */
+    private fun looksLikeAccountOrigin(raw: String): Boolean {
+        if (raw.contains(Regex("\\s"))) return false
+        return raw.startsWith("[") ||
+            raw.startsWith("xpub") || raw.startsWith("ypub") || raw.startsWith("zpub") ||
+            raw.startsWith("tpub") || raw.startsWith("upub") || raw.startsWith("vpub")
     }
 
     fun showWatchOnlyImportDialog(fragment: Fragment, viewModel: WalletViewModel) {
@@ -286,6 +400,38 @@ object WalletCreationFlow {
                         tvError.text         = state.message
                         tvError.visibility   = View.VISIBLE
                         viewModel.resetWatchOnlyImportState()
+                    }
+                    is WatchOnlyImportState.ConflictWithKeyedWallet -> {
+                        progress.visibility  = View.GONE
+                        btnConfirm.isEnabled = true
+                        btnCancel.isEnabled  = true
+                        viewModel.resetWatchOnlyImportState()
+                        val fingerprint = state.fingerprint
+                        AlertDialog.Builder(context, R.style.Theme_PokéWallet_Dialog)
+                            .setTitle("⚠️ Essa carteira já existe com a chave")
+                            .setMessage(
+                                "Essa chave pública é da MESMA carteira que já está neste " +
+                                "aparelho com a seed (carteira principal).\n\n" +
+                                "Pra importar como watch-only, a versão com chave precisa ser " +
+                                "esquecida antes (o app não guarda as duas ao mesmo tempo). " +
+                                "Antes de confirmar, tenha certeza absoluta de que o mnemonic " +
+                                "e a passphrase Pokémon dessa carteira estão anotados em local " +
+                                "seguro — é a única forma de recuperar o controle total dela " +
+                                "depois.\n\nEsquecer a carteira principal e importar como watch-only?"
+                            )
+                            .setPositiveButton("Esquecer e importar") { _, _ ->
+                                val accountOrigin = etOrigin.text?.toString()?.trim() ?: ""
+                                val customName    = etWalletName.text?.toString()?.trim()
+                                progress.visibility  = View.VISIBLE
+                                btnConfirm.isEnabled = false
+                                btnCancel.isEnabled  = false
+                                viewModel.importWatchOnly(
+                                    accountOrigin, selectedNetwork, selectedSpendType, customName,
+                                    forgetKeyedFingerprint = fingerprint
+                                )
+                            }
+                            .setNegativeButton("Cancelar", null)
+                            .show()
                     }
                     is WatchOnlyImportState.Idle -> {}
                 }

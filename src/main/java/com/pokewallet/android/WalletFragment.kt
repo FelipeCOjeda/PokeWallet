@@ -90,10 +90,12 @@ class WalletFragment : Fragment() {
         val progressScan     = view.findViewById<ProgressBar>(R.id.progress_scan)
         val tvScanStatus     = view.findViewById<TextView>(R.id.tv_scan_status)
         val tvLastScan       = view.findViewById<TextView>(R.id.tv_last_scan)
+        val tvScanError      = view.findViewById<TextView>(R.id.tv_scan_error)
         val btnReceive       = view.findViewById<MaterialButton>(R.id.btn_receive)
         val btnSend          = view.findViewById<MaterialButton>(R.id.btn_send)
         val cardBag          = view.findViewById<View>(R.id.card_bag)
         val tvWalletName     = view.findViewById<TextView>(R.id.tv_wallet_name)
+        val imgWalletType    = view.findViewById<ImageView>(R.id.img_wallet_type)
         val btnRenameWallet  = view.findViewById<TextView>(R.id.btn_rename_wallet)
         val btnSwitchWallet  = view.findViewById<MaterialButton>(R.id.btn_switch_wallet)
         val btnNewWallet     = view.findViewById<MaterialButton>(R.id.btn_new_wallet)
@@ -208,7 +210,17 @@ class WalletFragment : Fragment() {
                             tvLastScan.visibility = View.VISIBLE
                         }
 
-                        tvWalletName.text = if (state.isWatchOnly) "👁 ${state.displayName}" else "🔑 ${state.displayName}"
+                        if (state.lastScanError != null) {
+                            tvScanError.text       = "⚠️ Última verificação de saldo falhou: ${state.lastScanError} — o app tenta de novo sozinho em alguns minutos."
+                            tvScanError.visibility = View.VISIBLE
+                        } else {
+                            tvScanError.visibility = View.GONE
+                        }
+
+                        tvWalletName.text = state.displayName
+                        imgWalletType.imageTintList = if (state.isWatchOnly)
+                            ContextCompat.getColorStateList(requireContext(), R.color.pokeball_gray)
+                        else null
                         tvSeedBackup.visibility = if (state.isWatchOnly) View.GONE else View.VISIBLE
                         // Assinar PSBT air-gapped só faz sentido com seed local —
                         // watch-only é justamente quem PRECISA de outro aparelho pra isso.
@@ -1163,6 +1175,20 @@ class WalletFragment : Fragment() {
         val progress     = dialogView.findViewById<ProgressBar>(R.id.progress_airgapped)
         val tvResult     = dialogView.findViewById<TextView>(R.id.tv_airgapped_result)
         val btnClose     = dialogView.findViewById<MaterialButton>(R.id.btn_close_airgapped)
+        val rgMode       = dialogView.findViewById<RadioGroup>(R.id.rg_airgapped_broadcast_mode)
+        val tvModeExplainer = dialogView.findViewById<TextView>(R.id.tv_airgapped_mode_explainer)
+
+        var broadcastMode: SendMode = SendMode.Internet
+        rgMode.setOnCheckedChangeListener { _, checkedId ->
+            broadcastMode = when (checkedId) {
+                R.id.rb_airgapped_mode_bitchat -> SendMode.BitChat
+                else                            -> SendMode.Internet
+            }
+            tvModeExplainer.setText(
+                if (broadcastMode is SendMode.BitChat) R.string.send_mode_bitchat_explainer
+                else R.string.send_mode_internet_explainer
+            )
+        }
 
         tvExpected.text = "txid esperado: ${psbt.expectedTxid}"
 
@@ -1186,7 +1212,7 @@ class WalletFragment : Fragment() {
                 progress.visibility = View.VISIBLE
                 tvResult.visibility = View.GONE
                 btnScan.isEnabled = false
-                viewModel.submitSignedAirGappedTx(scanned.trim(), psbt.expectedTxid, psbt.network)
+                viewModel.submitSignedAirGappedTx(scanned.trim(), psbt.expectedTxid, psbt.network, broadcastMode)
             }
         }
 
@@ -1260,18 +1286,21 @@ class WalletFragment : Fragment() {
         val btnConfirm  = dialogView.findViewById<MaterialButton>(R.id.btn_confirm_switch_wallet)
 
         val chipIdToFingerprint = mutableMapOf<Int, String>()
-        wallets.forEach { (fingerprint, displayName) ->
+        wallets.forEach { (fingerprint, displayName, isWatchOnly) ->
             val chip = com.google.android.material.chip.Chip(requireContext()).apply {
                 id = View.generateViewId()
                 text = displayName
                 isCheckable = true
                 setChipBackgroundColorResource(android.R.color.transparent)
                 setEnsureMinTouchTargetSize(false)
-                // Cada carteira representada por uma pokébola — ícone com
-                // cores próprias, sem aplicar o tint padrão do Chip por cima.
+                // Cada carteira representada por uma pokébola — colorida (cores
+                // próprias, sem tint) quando tem a chave (seed), cinza quando é
+                // watch-only (só xpub, sem poder assinar sozinha).
                 chipIcon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_pokeball)
                 isChipIconVisible = true
-                chipIconTint = null
+                chipIconTint = if (isWatchOnly)
+                    ContextCompat.getColorStateList(requireContext(), R.color.pokeball_gray)
+                else null
                 chipIconSize = 22f * resources.displayMetrics.density
             }
             chipGroup.addView(chip)
@@ -1303,7 +1332,7 @@ class WalletFragment : Fragment() {
             .setItems(arrayOf("Criar carteira nova", "Restaurar carteira existente", "👁 Importar watch-only (xpub)")) { _, which ->
                 when (which) {
                     0 -> WalletCreationFlow.showPassphraseChoiceDialog(this, viewModel)
-                    1 -> WalletCreationFlow.showRestoreDialog(this, viewModel)
+                    1 -> WalletCreationFlow.showRestoreDialog(this, viewModel) { prompt, onResult -> launchQrScan(prompt, onResult) }
                     else -> WalletCreationFlow.showWatchOnlyImportDialog(this, viewModel)
                 }
             }

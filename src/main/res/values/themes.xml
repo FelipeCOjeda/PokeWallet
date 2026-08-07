@@ -5,7 +5,7 @@
         <item name="colorPrimaryDark">@color/primary_red_dark</item>
         <item name="colorAccent">@color/accent_yellow</item>
         <item name="colorError">@color/error_red</item>
-        <item name="android:windowBackground">@color/gb_screen</item>
+        <item name="android:windowBackground">@drawable/bg_overworld_repeat</item>
         <item name="android:statusBarColor">@color/gb_border</item>
         <item name="android:navigationBarColor">@color/gb_border</item>
         <item name="android:textColorPrimary">@color/gb_border</item>
@@ -15,7 +15,7 @@
 
     <style name="Theme.PokéWallet.Dialog" parent="Theme.MaterialComponents.Dialog">
         <item name="colorPrimary">@color/primary_red</item>
-        <item name="android:windowBackground">@color/gb_screen</item>
+        <item name="android:windowBackground">@drawable/bg_overworld_repeat</item>
         <item name="android:textColorPrimary">@color/gb_border</item>
         <item name="android:textColorSecondary">@color/gb_border_soft</item>
     </style>

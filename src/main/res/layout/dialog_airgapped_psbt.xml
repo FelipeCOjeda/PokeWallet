@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/gb_screen">
+    android:background="@drawable/bg_overworld_repeat">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -51,6 +51,59 @@
             android:textColor="@color/gb_border_soft"
             android:gravity="center"
             android:layout_marginBottom="20dp" />
+
+        <!-- Modo de transmissão da tx já assinada (depois de escaneada) —
+             mesmas duas opções do envio normal, watch-only também pode
+             escolher entre Internet direto ou BitChat/Nostr. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/send_mode_label"
+                android:textSize="10sp"
+                style="@style/Gameboy.Label"
+                android:layout_marginBottom="10dp" />
+
+            <RadioGroup
+                android:id="@+id/rg_airgapped_broadcast_mode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="8dp">
+
+                <RadioButton
+                    android:id="@+id/rb_airgapped_mode_internet"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/send_mode_internet"
+                    android:buttonTint="@color/bitcoin_orange"
+                    android:textColor="@color/gb_border"
+                    android:checked="true" />
+
+                <RadioButton
+                    android:id="@+id/rb_airgapped_mode_bitchat"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/send_mode_bitchat"
+                    android:buttonTint="@color/bitcoin_orange"
+                    android:textColor="@color/gb_border" />
+
+            </RadioGroup>
+
+            <TextView
+                android:id="@+id/tv_airgapped_mode_explainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/send_mode_internet_explainer"
+                android:textSize="12sp"
+                android:textColor="@color/gb_border_soft" />
+
+        </LinearLayout>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_scan_signed_tx"

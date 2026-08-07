@@ -18,8 +18,13 @@ object ExtendedKeySerializer {
         0x04.toByte(), 0xB2.toByte(), 0x47.toByte(), 0x46.toByte()
     )
 
+    // 0x04B2430C (valor anterior aqui) é na verdade "zprv" (chave PRIVADA
+    // mainnet BIP84) — bug pré-existente, nunca usado de verdade em
+    // produção antes de toDisplayPrefix() (achado pelo teste
+    // ExtendedKeySerializerDisplayPrefixTest). Valor certo de "vpub"
+    // (SLIP-132, BIP84 testnet PÚBLICA) é 0x045F1CF6.
     private val VPUB = byteArrayOf(
-        0x04.toByte(), 0xB2.toByte(), 0x43.toByte(), 0x0C.toByte()
+        0x04.toByte(), 0x5F.toByte(), 0x1C.toByte(), 0xF6.toByte()
     )
 
     private val TPUB = byteArrayOf(
@@ -29,6 +34,27 @@ object ExtendedKeySerializer {
     // -------------------------
     // Public API
     // -------------------------
+
+    /**
+     * Reescreve o prefixo (xpub/tpub → zpub/vpub) de uma extended public
+     * key JÁ existente — só troca os 4 bytes de versão + recalcula o
+     * checksum, NUNCA muda chain code/pubkey/depth/parent fingerprint (por
+     * isso funciona em cima de qualquer xpub válido, não só os gerados por
+     * este objeto). Usado SÓ pra EXIBIÇÃO (tela "Ver Chave Pública") — o
+     * formato salvo em wallet.json continua "xpub" sempre, sem mudar
+     * comportamento em nenhum outro lugar do app (XpubAddressDeriver.
+     * decodeXpub() ignora os bytes de versão de qualquer forma, então o
+     * prefixo é só cosmético). BIP86 (Taproot) não tem prefixo SLIP-132
+     * padronizado — mantém xpub/tpub sem alteração.
+     */
+    fun toDisplayPrefix(xpub: String, spendType: SpendType, network: Network): String {
+        if (spendType != SpendType.BIP84) return xpub
+        val payload = com.pokewallet.Base58.decodeCheck(xpub)
+        require(payload.size == 78) { "xpub inválido: payload ${payload.size} bytes (esperado 78)" }
+        val version = if (network == Network.MAINNET) ZPUB else VPUB
+        val newPayload = version + payload.copyOfRange(4, payload.size)
+        return com.pokewallet.Base58.encode(newPayload + checksum(newPayload))
+    }
 
     fun serializeXpub(key: HDKey): String =
         serialize(key, XPUB)

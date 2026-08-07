@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/gb_screen">
+    android:background="@drawable/bg_overworld_repeat">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -54,7 +54,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Cole a string exportada em “Ver Chave Pública” na carteira original (formato [fingerprint/caminho]xpub…)."
+            android:text="Cole a xpub (ex: xpub6C…) ou a string completa exportada em “Ver Chave Pública” na carteira original ([fingerprint/caminho]xpub…). Confira se REDE e TIPO DE ENDEREÇO abaixo batem com a wallet original."
             android:textSize="12sp"
             android:textColor="@color/gb_border_soft"
             android:layout_marginBottom="8dp" />
@@ -62,7 +62,7 @@
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="[a9fe848d/84'/0'/0']xpub…"
+            android:hint="xpub6C… ou [a9fe848d/84'/0'/0']xpub…"
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_marginBottom="28dp"
             app:boxStrokeColor="@color/gb_border_soft"

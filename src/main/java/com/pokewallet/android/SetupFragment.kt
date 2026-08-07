@@ -22,6 +22,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import com.pokewallet.R
 import com.pokewallet.crypto.PassphraseMode
 import kotlinx.coroutines.flow.collectLatest
@@ -30,6 +32,28 @@ import kotlinx.coroutines.launch
 class SetupFragment : Fragment() {
 
     private lateinit var viewModel: WalletViewModel
+
+    /** Callback do próximo resultado de QR — usado pela tela de Restaurar
+     *  (mnemonic OU xpub, mesmo campo detecta sozinho o formato). Mesmo
+     *  padrão de WalletFragment.qrScanLauncher/qrScanCallback. */
+    private var qrScanCallback: ((String) -> Unit)? = null
+
+    private val qrScanLauncher = registerForActivityResult(ScanContract()) { result ->
+        val content = result.contents ?: return@registerForActivityResult
+        qrScanCallback?.invoke(content)
+        qrScanCallback = null
+    }
+
+    private fun launchQrScan(prompt: String, onResult: (String) -> Unit) {
+        qrScanCallback = onResult
+        val options = ScanOptions().apply {
+            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            setPrompt(prompt)
+            setBeepEnabled(false)
+            setOrientationLocked(false)
+        }
+        qrScanLauncher.launch(options)
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_setup, container, false)
@@ -54,7 +78,9 @@ class SetupFragment : Fragment() {
             WalletCreationFlow.showPassphraseChoiceDialog(this, viewModel)
         }
 
-        btnRestore.setOnClickListener { WalletCreationFlow.showRestoreDialog(this, viewModel) }
+        btnRestore.setOnClickListener {
+            WalletCreationFlow.showRestoreDialog(this, viewModel) { prompt, onResult -> launchQrScan(prompt, onResult) }
+        }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.walletState.collectLatest { state ->

@@ -48,7 +48,12 @@ sealed class WalletState {
         val lastScanTime: Date?,
         /** Carteira importada só por xpub (Fase C) — sem seed neste
          *  dispositivo, não pode assinar/enviar localmente. */
-        val isWatchOnly: Boolean = false
+        val isWatchOnly: Boolean = false,
+        /** Mensagem do último scan que FALHOU (rede, timeout, etc.) — antes
+         *  disso doScan() engolia qualquer exceção em silêncio, deixando o
+         *  saldo parado no valor antigo sem nenhum aviso visível. Limpo
+         *  (null) assim que um scan tiver sucesso de novo. */
+        val lastScanError: String? = null
     ) : WalletState()
     data class Error(val message: String) : WalletState()
 }
@@ -65,6 +70,10 @@ sealed class WatchOnlyImportState {
     object Importing : WatchOnlyImportState()
     object Success   : WatchOnlyImportState()
     data class Error(val message: String) : WatchOnlyImportState()
+    /** A xpub importada é da MESMA carteira (mesmo fingerprint) que já existe
+     *  NESTE aparelho com a seed — pede confirmação explícita antes de
+     *  esquecer a versão com chave e trocar por esta watch-only. */
+    data class ConflictWithKeyedWallet(val fingerprint: String) : WatchOnlyImportState()
 }
 
 /** PSBT não-assinado pronto pra sair como QR do lado watch-only (Fase C4). */
@@ -159,12 +168,36 @@ private data class NostrSendResult(val txid: String, val confirmed: Boolean, val
 private const val BITCHAT_GEOHASH = "6g"
 
 /**
- * Por quanto tempo o resultado do último scan (doScan()) é reaproveitado
- * por buildSignedTx() em vez de disparar um scan completo novo. 90s = 1.5x
- * o intervalo do autoScanJob (60s) — cobre o caso comum (enviar logo após
- * a varredura periódica) sem arriscar UTXO desatualizado por muito tempo.
+ * Intervalo base do autoScanJob. Um scan típico faz ~40+ requests HTTP
+ * sequenciais só de stats (gap limit 20 × 2 chains), mais UTXOs/histórico
+ * dos endereços ativos, mais 1 de fee-estimates — tudo contra o MESMO host
+ * (blockstream.info/mempool.space). A API pública do Blockstream permite
+ * só 700 requests/hora por IP; com o intervalo antigo de 60s (até 60
+ * scans/hora) isso estourava o limite bem rápido e a API passava a
+ * responder 429 (erro real visto em campo — ver DOSCAN_RATE_LIMIT_BACKOFF_MS
+ * abaixo pro tratamento). 4 min = no máximo 15 scans/hora, ~15×41≈615
+ * requests/hora só do auto-scan — folga pra fee-estimates extra e um
+ * refresh manual ocasional sem estourar de novo.
  */
-private const val SCAN_CACHE_TTL_MS = 90_000L
+private const val AUTO_SCAN_BASE_INTERVAL_MS = 240_000L
+
+/**
+ * Backoff aplicado ao PRÓXIMO ciclo do autoScanJob depois de um 429
+ * (rate limit) — dobra a cada erro consecutivo (240s → 480s → 960s...),
+ * até um teto, em vez de insistir no mesmo intervalo de 4 min e levar
+ * outro 429 quase certo (a API já sinalizou que está bloqueando este IP
+ * por enquanto). Reseta pro intervalo base assim que um scan tiver
+ * sucesso de novo.
+ */
+private const val AUTO_SCAN_MAX_BACKOFF_MS = 20 * 60_000L // 20 min
+
+/**
+ * Por quanto tempo o resultado do último scan (doScan()) é reaproveitado
+ * por buildSignedTx() em vez de disparar um scan completo novo. 1.5x o
+ * intervalo base do autoScanJob — cobre o caso comum (enviar logo após a
+ * varredura periódica) sem arriscar UTXO desatualizado por muito tempo.
+ */
+private const val SCAN_CACHE_TTL_MS = (AUTO_SCAN_BASE_INTERVAL_MS * 1.5).toLong()
 
 /** Extrai o nome do Pokémon de uma passphrase no formato "pokemon:N:Nome". */
 private val POKEMON_PASSPHRASE_REGEX = Regex("^pokemon:\\d+:(.+)$")
@@ -373,14 +406,26 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         _feeState.value = null
     }
 
+    /** Nº de 429 (rate limit) consecutivos do autoScanJob — controla o
+     *  backoff do próximo ciclo (ver AUTO_SCAN_MAX_BACKOFF_MS). Resetado a
+     *  cada scan bem-sucedido. */
+    private var consecutiveRateLimitHits = 0
+
+    private fun nextAutoScanDelayMs(): Long {
+        if (consecutiveRateLimitHits <= 0) return AUTO_SCAN_BASE_INTERVAL_MS
+        val backoff = AUTO_SCAN_BASE_INTERVAL_MS * (1L shl minOf(consecutiveRateLimitHits, 6))
+        return minOf(backoff, AUTO_SCAN_MAX_BACKOFF_MS)
+    }
+
     private fun startAutoScan() {
         autoScanJob?.cancel()
+        consecutiveRateLimitHits = 0
         loadPrice()
         loadFees()
         autoScanJob = viewModelScope.launch {
             doScan()
             while (true) {
-                delay(60_000L)
+                delay(nextAutoScanDelayMs())
                 doScan()
                 loadPrice()
                 loadFees()
@@ -419,6 +464,11 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     /** Força uma varredura imediata (sem esperar o ciclo de 60s) — usado pelo
      *  botão Home, além do refresh automático já rodando em startAutoScan(). */
     fun refreshNow() {
+        // Guarda simples contra toque repetido (ex.: usuário tocando Home
+        // várias vezes rápido enquanto ansioso pra ver o saldo) empilhar
+        // scans extras — cada um pesa dezenas de requests, e empilhar é
+        // exatamente o que mais rápido leva a um 429 (ver AUTO_SCAN_*).
+        if ((_walletState.value as? WalletState.Loaded)?.isScanning == true) return
         viewModelScope.launch { doScan() }
     }
 
@@ -460,11 +510,22 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             val xpub = wallet.xpub ?: return@withLock
             val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
 
+            // needsFullRescan (só true logo após migrar um wallet.json de
+            // antes do scan incremental existir) força ignorar o estado
+            // incremental UMA vez — sem isso, endereços antigos com saldo
+            // (de antes desses campos existirem) ficariam invisíveis pro
+            // scan incremental, que só re-verifica o que ele mesmo já sabe
+            // que é ativo.
+            val incremental = !wallet.needsFullRescan
             val result = withContext(Dispatchers.IO) {
                 WalletScanner.scan(
                     xpub       = xpub,
                     network    = network,
                     spendType  = wallet.spendType,
+                    startExternalIndex  = if (incremental) wallet.nextExternalIndex else 0,
+                    startInternalIndex  = if (incremental) wallet.nextInternalIndex else 0,
+                    knownActiveExternal = if (incremental) wallet.activeExternalIndices else emptySet(),
+                    knownActiveInternal = if (incremental) wallet.activeInternalIndices else emptySet(),
                     onProgress = { _, index, _ ->
                         val loaded = _walletState.value as? WalletState.Loaded ?: return@scan
                         _walletState.value = loaded.copy(scanStatus = "Verificando endereço $index…")
@@ -475,6 +536,13 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) {
                 wallet.nextExternalIndex = result.nextExternalIndex
                 wallet.nextInternalIndex = result.nextInternalIndex
+                // allWithActivity inclui TANTO os índices já conhecidos
+                // (re-verificados) QUANTO os novos achados na fronteira —
+                // vira a lista completa e atualizada de índices ativos pro
+                // PRÓXIMO scan incremental usar.
+                wallet.activeExternalIndices = result.allWithActivity.filter { it.chain == 0 }.mapTo(mutableSetOf()) { it.index }
+                wallet.activeInternalIndices = result.allWithActivity.filter { it.chain == 1 }.mapTo(mutableSetOf()) { it.index }
+                wallet.needsFullRescan = false
                 WalletStorage.save(wallet)
             }
 
@@ -490,19 +558,40 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             lastKnownPendingSats = pendingSats
 
             _walletState.value = current.copy(
-                balanceSats  = confirmedSats,
-                pendingSats  = if (pendingSats != 0L) pendingSats else null,
-                utxoCount    = result.addressesWithFunds.sumOf { it.utxos.size },
-                isScanning   = false,
-                scanStatus   = null,
-                lastScanTime = Date()
+                balanceSats   = confirmedSats,
+                pendingSats   = if (pendingSats != 0L) pendingSats else null,
+                utxoCount     = result.addressesWithFunds.sumOf { it.utxos.size },
+                isScanning    = false,
+                scanStatus    = null,
+                lastScanTime  = Date(),
+                lastScanError = null
             )
 
             loadTxHistory(result.allWithActivity, network)
+            consecutiveRateLimitHits = 0
         } catch (e: Exception) {
+            // ANTES: erro era engolido em silêncio (só isScanning=false), saldo
+            // ficava parado no valor antigo sem NENHUM aviso — de fora parecia
+            // "o app não reconhece o saldo" quando na real o scan tava falhando
+            // toda vez (rede, timeout, rate limit etc.) sem ninguém saber.
             val fallback = _walletState.value as? WalletState.Loaded ?: current
-            _walletState.value = fallback.copy(isScanning = false, scanStatus = null)
+            _walletState.value = fallback.copy(
+                isScanning    = false,
+                scanStatus    = null,
+                lastScanError = humanizeError(e)
+            )
+            // 429 confirmado em campo (Blockstream: 700 req/hora/IP) — o
+            // próximo ciclo do autoScanJob espera mais (nextAutoScanDelayMs)
+            // em vez de tentar de novo em 4 min e levar outro 429 quase
+            // certo. Qualquer OUTRO tipo de erro (rede, timeout) não conta
+            // pra esse backoff — só rate limit precisa de espera crescente.
+            if (isRateLimitError(e)) consecutiveRateLimitHits++ else consecutiveRateLimitHits = 0
         }
+    }
+
+    private fun isRateLimitError(e: Exception): Boolean {
+        val msg = e.message ?: return false
+        return msg.contains("429") || msg.contains("Too Many Requests", ignoreCase = true)
     }
 
     fun createWallet(
@@ -599,11 +688,19 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         return WalletRegistry.displayNameOrFallback(getApplication(), fingerprint)
     }
 
-    /** Lista (fingerprint, nome de exibição) de todas as carteiras conhecidas no disco. */
-    fun listKnownWallets(): List<Pair<String, String>> {
+    /** Fingerprint, nome de exibição e se é watch-only de uma carteira conhecida no disco. */
+    data class KnownWallet(val fingerprint: String, val displayName: String, val isWatchOnly: Boolean)
+
+    /** Lista todas as carteiras conhecidas no disco. */
+    fun listKnownWallets(): List<KnownWallet> {
         val context = getApplication<Application>()
-        return WalletRegistry.listKnownWalletIds(context.filesDir)
-            .map { id -> id to WalletRegistry.displayNameOrFallback(context, id) }
+        return WalletRegistry.listKnownWalletIds(context.filesDir).map { id ->
+            KnownWallet(
+                fingerprint = id,
+                displayName = WalletRegistry.displayNameOrFallback(context, id),
+                isWatchOnly = WalletStorage.peekIsWatchOnly(WalletRegistry.walletDir(context.filesDir, id))
+            )
+        }
     }
 
     /** Troca a carteira ativa pra [fingerprint] (já precisa existir em disco). */
@@ -707,10 +804,20 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
      * escanear) na tela de importação watch-only de outro aparelho.
      * Nenhum dado secreto: é só a chave pública, segura de exportar.
      */
+    /** accountOrigin pronto pra EXIBIÇÃO — mesmo dado salvo em wallet.json,
+     *  só com o prefixo da xpub reescrito pra zpub/vpub quando a carteira é
+     *  BIP84 (Native SegWit), formato que outras wallets tipo Electrum/
+     *  Sparrow também usam pra esse tipo de endereço. Puramente cosmético:
+     *  o valor salvo internamente continua "xpub" sempre (ver
+     *  ExtendedKeySerializer.toDisplayPrefix()). */
     fun getAccountOrigin(): String? {
         if (!walletSwitchMutex.tryLock()) return null
         return try {
-            WalletStorage.load().accountOrigin
+            val wallet = WalletStorage.load()
+            val origin = wallet.accountOrigin ?: return null
+            val xpub = wallet.xpub ?: return origin
+            val displayXpub = com.pokewallet.crypto.ExtendedKeySerializer.toDisplayPrefix(xpub, wallet.spendType, wallet.network)
+            if (displayXpub == xpub) origin else origin.replace(xpub, displayXpub)
         } catch (_: Exception) {
             null
         } finally {
@@ -901,12 +1008,20 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     /** Importa uma carteira watch-only (só xpub, sem seed) — mesmo formato
      *  staging→rename de restoreWallet()/createWallet(), só troca o bloco
      *  que grava wallet.json (WalletWatchOnlyImport.run em vez de
-     *  WalletRestore.run). Nome de exibição sem Pokémon (não há passphrase). */
+     *  WalletRestore.run). Nome de exibição sem Pokémon (não há passphrase).
+     *
+     *  [forgetKeyedFingerprint] só é passado depois que o usuário já
+     *  confirmou explicitamente (via tela de conflito) que quer esquecer a
+     *  carteira COM CHAVE de mesmo fingerprint que já existe neste
+     *  aparelho e trocar por esta versão watch-only. Sem confirmação
+     *  prévia, uma colisão desse tipo pára em
+     *  WatchOnlyImportState.ConflictWithKeyedWallet em vez de seguir. */
     fun importWatchOnly(
         accountOrigin: String,
         network: Network,
         spendType: SpendType,
-        customName: String? = null
+        customName: String? = null,
+        forgetKeyedFingerprint: String? = null
     ) {
         _watchOnlyImportState.value = WatchOnlyImportState.Importing
         val context = getApplication<Application>()
@@ -914,6 +1029,22 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             var imported = false
             walletSwitchMutex.withLock {
                 try {
+                    val parsed = WalletWatchOnlyImport.parse(accountOrigin, network, spendType)
+                    val existingDir = WalletRegistry.walletDir(context.filesDir, parsed.fingerprintHex)
+                    val existingIsKeyed = withContext(Dispatchers.IO) {
+                        existingDir.exists() && !WalletStorage.peekIsWatchOnly(existingDir)
+                    }
+                    if (existingIsKeyed && forgetKeyedFingerprint != parsed.fingerprintHex) {
+                        _watchOnlyImportState.value = WatchOnlyImportState.ConflictWithKeyedWallet(parsed.fingerprintHex)
+                        return@withLock
+                    }
+                    if (existingIsKeyed) {
+                        // Confirmado pelo usuário: só apaga o diretório (NÃO mexe no
+                        // nome/registro em WalletRegistry — mesmo fingerprint, então
+                        // o nome de exibição já cadastrado continua valendo pra versão
+                        // watch-only que vai ocupar o lugar).
+                        withContext(Dispatchers.IO) { existingDir.deleteRecursively() }
+                    }
                     val fingerprint = withContext(Dispatchers.IO) {
                         createWalletIntoPendingSlot(context) {
                             WalletWatchOnlyImport.run(accountOrigin, network, spendType)
@@ -1365,7 +1496,11 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val xpub    = requireNotNull(wallet.xpub) { "xpub não encontrado" }
         val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
         val spendType = wallet.spendType
-        val masterFingerprint = wallet.fingerprint.hexToBytes()
+        // Fingerprint "desconhecido" (zeros, convenção BIP174) quando a
+        // carteira foi importada por xpub pura — wallet.fingerprint nesse
+        // caso é só um pseudo-ID interno (diretório/registro), nunca deve
+        // ir dentro do PSBT (o lado assinante rejeitaria por não bater).
+        val masterFingerprint = if (wallet.hasVerifiedFingerprint) wallet.fingerprint.hexToBytes() else ByteArray(4)
         val purpose = spendType.bipPurpose()
 
         val resolved = resolveSpend(wallet, xpub, network, spendType, destination, amountSats, sweep, feeRateSatPerVbyte, manualUtxoKeys)
@@ -1464,8 +1599,12 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Lado watch-only: recebeu a tx assinada de volta (QR) — confere o
-     *  txid ANTES de transmitir (ver nota de segurança em parseSignedTxidHex()). */
-    fun submitSignedAirGappedTx(rawTxHex: String, expectedTxid: String, network: Network) {
+     *  txid ANTES de transmitir (ver nota de segurança em parseSignedTxidHex()).
+     *  [mode] escolhe entre Internet direto (BlockstreamClient) ou BitChat/
+     *  Nostr (mesmo canal/bot do envio normal) — watch-only não tem seed
+     *  pra derivar a identidade Nostr NIP-06 de sempre, então esse caminho
+     *  usa NostrKeys.random() (chave efêmera, nunca persistida). */
+    fun submitSignedAirGappedTx(rawTxHex: String, expectedTxid: String, network: Network, mode: SendMode = SendMode.Internet) {
         _airGappedBroadcastState.value = AirGappedBroadcastState.Verifying
         viewModelScope.launch {
             try {
@@ -1476,13 +1615,51 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                     )
                     return@launch
                 }
-                val broadcastTxid = withContext(Dispatchers.IO) { BlockstreamClient.broadcast(rawTxHex, network) }
+                val broadcastTxid = withContext(Dispatchers.IO) {
+                    when (mode) {
+                        is SendMode.Internet -> BlockstreamClient.broadcast(rawTxHex, network)
+                        is SendMode.BitChat  -> broadcastAirGappedViaNostr(rawTxHex, expectedTxid)
+                    }
+                }
                 _airGappedBroadcastState.value = AirGappedBroadcastState.Success(broadcastTxid)
                 doScan()
             } catch (e: Exception) {
                 _airGappedBroadcastState.value = AirGappedBroadcastState.Error(humanizeError(e))
             }
         }
+    }
+
+    /** Publica a tx já assinada (air-gapped, watch-only) no canal BitChat/
+     *  Nostr — mesmo bot/geohash de executeSendViaNostr(), identidade
+     *  EFÊMERA (NostrKeys.random()) já que não há seed neste aparelho. */
+    private suspend fun broadcastAirGappedViaNostr(rawTxHex: String, expectedTxid: String): String {
+        val (nostrPrivKey, nostrPubKey) = NostrKeys.random()
+        val relays = GeoRelayDirectory.closestRelays(BITCHAT_GEOHASH)
+        val event = try {
+            NostrEvent.build(
+                privKey32 = nostrPrivKey,
+                pubKey32  = nostrPubKey,
+                kind      = 20000,
+                tags      = listOf(listOf("g", BITCHAT_GEOHASH)),
+                content   = "!broadcast $rawTxHex"
+            )
+        } finally {
+            nostrPrivKey.fill(0)
+        }
+
+        val result = NostrRelayClient.publishAndAwaitReply(
+            event        = event,
+            relays       = relays,
+            ourPubkeyHex = event.pubkey,
+            geohash      = BITCHAT_GEOHASH,
+            timeoutMs    = 18_000L
+        ) { content -> content.contains(expectedTxid, ignoreCase = true) }
+
+        if (!result.published) {
+            error("Não foi possível publicar via Nostr — nenhum relay confirmou o recebimento.")
+        }
+
+        return expectedTxid
     }
 
     fun resetAirGappedBroadcastState() { _airGappedBroadcastState.value = AirGappedBroadcastState.Idle }
@@ -1530,8 +1707,14 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             val utxo = input.witnessUtxo ?: error("Input $i sem witness_utxo — PSBT incompleto")
             val (pubKeyHex, deriv) = input.bip32Derivations.entries.firstOrNull()
                 ?: error("Input $i sem informação de derivação — não sei qual chave usar pra assinar")
-            require(deriv.masterFingerprint.toHex() == wallet.fingerprint) {
-                "Esse PSBT foi montado por outra carteira (fingerprint ${deriv.masterFingerprint.toHex()} ≠ ${wallet.fingerprint} desta)."
+            // Fingerprint zerado = "desconhecido" (PSBT veio de watch-only importada
+            // só por xpub pura, sem o fingerprint mestre real) — nesse caso não dá
+            // pra conferir aqui, a checagem de segurança real é a de script mais
+            // abaixo (recalcula a partir da chave derivada e confere contra o UTXO).
+            if (!deriv.masterFingerprint.all { it == 0.toByte() }) {
+                require(deriv.masterFingerprint.toHex() == wallet.fingerprint) {
+                    "Esse PSBT foi montado por outra carteira (fingerprint ${deriv.masterFingerprint.toHex()} ≠ ${wallet.fingerprint} desta)."
+                }
             }
             require(deriv.path.size == 5) { "Caminho de derivação inesperado no input $i" }
             val chain = deriv.path[3]
@@ -1585,8 +1768,14 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             val utxo = allUtxos[i]
             val deriv = input.tapBip32Derivation
                 ?: error("Input $i sem informação de derivação — não sei qual chave usar pra assinar")
-            require(deriv.masterFingerprint.toHex() == wallet.fingerprint) {
-                "Esse PSBT foi montado por outra carteira (fingerprint ${deriv.masterFingerprint.toHex()} ≠ ${wallet.fingerprint} desta)."
+            // Fingerprint zerado = "desconhecido" (PSBT veio de watch-only importada
+            // só por xpub pura, sem o fingerprint mestre real) — nesse caso não dá
+            // pra conferir aqui, a checagem de segurança real é a de script mais
+            // abaixo (recalcula a partir da chave derivada e confere contra o UTXO).
+            if (!deriv.masterFingerprint.all { it == 0.toByte() }) {
+                require(deriv.masterFingerprint.toHex() == wallet.fingerprint) {
+                    "Esse PSBT foi montado por outra carteira (fingerprint ${deriv.masterFingerprint.toHex()} ≠ ${wallet.fingerprint} desta)."
+                }
             }
             require(deriv.path.size == 5) { "Caminho de derivação inesperado no input $i" }
             val chain = deriv.path[3]
@@ -1621,6 +1810,10 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         return when {
             msg.contains("RIPEMD160", ignoreCase = true) ->
                 "Erro ao inicializar criptografia. Reinicie o app e tente novamente."
+            msg.contains("429") || msg.contains("Too Many Requests", ignoreCase = true) ->
+                "Limite de requisições do servidor atingido (comum se você atualizar manualmente " +
+                "várias vezes seguidas) — o app espera automaticamente mais tempo antes de tentar " +
+                "de novo. Saldo mostrado é o último confirmado, não uma perda.\n\nDetalhe técnico: $msg"
             msg.contains("network", ignoreCase = true) ||
             msg.contains("timeout", ignoreCase = true) ||
             msg.contains("connect", ignoreCase = true) ->

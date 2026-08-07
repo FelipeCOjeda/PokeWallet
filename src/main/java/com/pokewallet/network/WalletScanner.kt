@@ -84,6 +84,15 @@ object WalletScanner {
      * @param xpub      Account-level xpub (m/84'/coin'/0')
      * @param network   Rede alvo
      * @param gapLimit  Endereços consecutivos sem uso antes de parar (padrão: 20)
+     * @param startExternalIndex/startInternalIndex de onde começar a varrer
+     *   endereços NOVOS em cada chain — 0 (padrão) faz a varredura completa
+     *   de sempre. Passar o nextIndex já persistido faz o scan olhar só a
+     *   partir dali (mais os índices de [knownActive*], ver abaixo).
+     * @param knownActiveExternal/knownActiveInternal índices que JÁ
+     *   mostraram atividade num scan anterior — sempre RE-verificados
+     *   (podem ter sido gastos ou recebido mais), mesmo estando antes de
+     *   start*Index. Vazio (padrão) = comportamento idêntico ao scan
+     *   completo de sempre.
      * @param onProgress Callback opcional chamado a cada endereço varrido
      */
     suspend fun scan(
@@ -91,10 +100,14 @@ object WalletScanner {
         network: Network,
         spendType: SpendType = SpendType.BIP84,
         gapLimit: Int = GAP_LIMIT_DEFAULT,
+        startExternalIndex: Int = 0,
+        startInternalIndex: Int = 0,
+        knownActiveExternal: Set<Int> = emptySet(),
+        knownActiveInternal: Set<Int> = emptySet(),
         onProgress: ((chain: Int, index: Int, address: String) -> Unit)? = null
     ): ScanResult {
-        val external = scanChain(xpub, network, spendType, chain = 0, gapLimit, onProgress)
-        val internal = scanChain(xpub, network, spendType, chain = 1, gapLimit, onProgress)
+        val external = scanChain(xpub, network, spendType, chain = 0, startExternalIndex, knownActiveExternal, gapLimit, onProgress)
+        val internal = scanChain(xpub, network, spendType, chain = 1, startInternalIndex, knownActiveInternal, gapLimit, onProgress)
 
         val all       = external.scanned + internal.scanned
         val withFunds = all.filter { it.utxos.isNotEmpty() }
@@ -116,33 +129,53 @@ object WalletScanner {
 
     private data class ChainResult(val scanned: List<ScannedAddress>, val nextIndex: Int)
 
+    /**
+     * Duas partes: (1) RE-verifica cada índice de [knownActive] — endereço
+     * que já teve atividade antes precisa continuar sendo checado pra
+     * sempre (pode ter recebido mais ou sido gasto), mesmo fora da janela
+     * de gap limit; (2) varre a "fronteira" a partir de [startIndex] até
+     * bater [gapLimit] consecutivos sem uso, exatamente como o scan
+     * completo sempre fez — só que começando de onde parou em vez de 0.
+     * Com startIndex=0 e knownActive vazio (os padrões), (1) não faz nada
+     * e (2) sozinho já reproduz o scan completo de sempre byte a byte.
+     */
     private suspend fun scanChain(
         xpub: String,
         network: Network,
         spendType: SpendType,
         chain: Int,
+        startIndex: Int,
+        knownActive: Set<Int>,
         gapLimit: Int,
         onProgress: ((Int, Int, String) -> Unit)?
     ): ChainResult {
         val scanned = mutableListOf<ScannedAddress>()
-        var gap = 0
-        var index = 0
-        var lastUsed = -1
 
-        while (gap < gapLimit) {
+        suspend fun checkOne(index: Int): ScannedAddress {
             val address = when (spendType) {
                 SpendType.BIP84 -> XpubAddressDeriver.p2wpkhAddress(xpub, chain, index, network)
                 SpendType.BIP86 -> XpubAddressDeriver.p2trAddress(xpub, chain, index, network)
             }
             onProgress?.invoke(chain, index, address)
-
             val stats = BlockstreamClient.getAddressStats(address, network)
             val utxos = if (stats.hasActivity) BlockstreamClient.getUtxos(address, network) else emptyList()
+            return ScannedAddress(chain, index, address, stats, utxos)
+        }
 
-            scanned += ScannedAddress(chain, index, address, stats, utxos)
+        for (index in knownActive.sorted()) {
+            scanned += checkOne(index)
+        }
 
-            if (stats.hasActivity) {
-                lastUsed = index
+        var gap = 0
+        var index = startIndex
+        var lastUsedInFrontier = startIndex - 1
+
+        while (gap < gapLimit) {
+            val result = checkOne(index)
+            scanned += result
+
+            if (result.stats.hasActivity) {
+                lastUsedInFrontier = index
                 gap = 0
             } else {
                 gap++
@@ -151,6 +184,6 @@ object WalletScanner {
             index++
         }
 
-        return ChainResult(scanned, lastUsed + 1)
+        return ChainResult(scanned, lastUsedInFrontier + 1)
     }
 }

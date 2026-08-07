@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/gb_screen">
+    android:background="@drawable/bg_overworld_repeat">
 
     <!-- Top bar -->
     <LinearLayout
@@ -171,6 +171,18 @@
                         android:textColor="@color/gb_border_soft"
                         android:visibility="gone" />
 
+                    <!-- Erro na última verificação de saldo — antes disso, um scan que
+                         falhasse (rede, timeout, etc.) ficava em silêncio total, saldo
+                         parado no valor antigo sem nenhum aviso. -->
+                    <TextView
+                        android:id="@+id/tv_scan_error"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textSize="11sp"
+                        android:textColor="@color/error_red"
+                        android:visibility="gone" />
+
             </LinearLayout>
 
             <!-- Botões Receber / Enviar -->
@@ -228,6 +240,17 @@
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:gravity="center_vertical">
+
+                        <!-- Pokébola: colorida = carteira com chave (seed), cinza =
+                             watch-only (só xpub) — mesmo código de cores da tela de
+                             trocar carteira. -->
+                        <ImageView
+                            android:id="@+id/img_wallet_type"
+                            android:layout_width="18dp"
+                            android:layout_height="18dp"
+                            android:layout_marginEnd="8dp"
+                            android:src="@drawable/ic_pokeball"
+                            android:contentDescription="@null" />
 
                         <TextView
                             android:id="@+id/tv_wallet_name"

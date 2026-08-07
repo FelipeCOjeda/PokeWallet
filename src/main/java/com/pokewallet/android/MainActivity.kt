@@ -14,11 +14,22 @@ class MainActivity : AppCompatActivity() {
 
     lateinit var viewModel: WalletViewModel
 
+    private var splashDone = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         viewModel = ViewModelProvider(this)[WalletViewModel::class.java]
+
+        showFragment(SplashFragment())
+    }
+
+    /** Chamado pela SplashFragment (toque na tela ou timeout) — só a partir
+     *  daqui o app passa a rotear pra Setup/Mochila conforme walletState. */
+    fun advancePastSplash() {
+        if (splashDone) return
+        splashDone = true
 
         lifecycleScope.launch {
             viewModel.walletState.collectLatest { state ->

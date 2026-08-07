@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fundo de "overworld" pixel-art tileável — tile ORIGINAL gerado pra este
+     app (não copiado dos tiles reais do Pokémon Yellow/Blue, só inspirado
+     na estética), bg_overworld_tile.png em drawable-nodpi/ (dia) e
+     drawable-night-nodpi/ (noite, escolhido automaticamente pelo Android
+     conforme o modo claro/escuro, mesmo padrão já usado nas outras cores
+     -night/ do app). -->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/bg_overworld_tile"
+    android:tileModeX="repeat"
+    android:tileModeY="repeat" />

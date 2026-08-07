@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tela de abertura — animação PRÓPRIA (Pikachu entrando andando, flash,
+     pokébola, título), não um vídeo externo (evita reproduzir o intro real
+     do Pokémon Yellow, que tem áudio/imagem protegidos por direito autoral
+     e este projeto tem release público no GitHub). Toque na tela ou espera
+     avança sozinho pro fluxo normal. -->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_overworld_repeat"
+    android:clickable="true"
+    android:focusable="true">
+
+    <ImageView
+        android:id="@+id/img_splash_pikachu"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_gravity="center_horizontal|bottom"
+        android:layout_marginBottom="180dp"
+        android:src="@drawable/pkm_025"
+        android:contentDescription="@null"
+        android:alpha="0" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center_horizontal">
+
+        <ImageView
+            android:id="@+id/img_splash_pokeball"
+            android:layout_width="96dp"
+            android:layout_height="96dp"
+            android:src="@drawable/ic_pokeball"
+            android:contentDescription="@null"
+            android:alpha="0"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:id="@+id/tv_splash_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="POKéWALLET"
+            android:textSize="22sp"
+            style="@style/Gameboy.Title"
+            android:textColor="@color/primary_red"
+            android:alpha="0" />
+
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tv_splash_hint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="32dp"
+        android:text="toque pra continuar"
+        android:textSize="11sp"
+        android:textColor="@color/gb_border_soft"
+        android:alpha="0" />
+
+    <!-- Flash branco (transição estilo "tela clareando" entre as cenas) -->
+    <View
+        android:id="@+id/view_splash_flash"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/white"
+        android:alpha="0" />
+
+</FrameLayout>

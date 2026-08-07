@@ -11,6 +11,8 @@
     <color name="bitcoin_orange">#F7931A</color>
     <color name="error_red">#FF4444</color>
     <color name="divider">#2A2D35</color>
+    <!-- Pokébola cinza — carteira watch-only (só xpub, sem chave) na Mochila -->
+    <color name="pokeball_gray">#9A9A9A</color>
 
     <!-- Game Boy screen palette (usado nas caixas estilo menu de jogo) -->
     <color name="gb_screen">#E8E8DC</color>

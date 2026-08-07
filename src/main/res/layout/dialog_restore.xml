@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/gb_screen">
+    android:background="@drawable/bg_overworld_repeat">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -46,15 +46,23 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="MNEMONIC (12 OU 24 PALAVRAS)"
+            android:text="MNEMONIC (12/24 PALAVRAS) OU XPUB"
             android:textSize="10sp"
             style="@style/Gameboy.Label"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Também aceita colar uma xpub (ex: xpub6C…) ou a chave pública completa — importa como watch-only, sem precisar da seed neste aparelho."
+            android:textSize="12sp"
+            android:textColor="@color/gb_border_soft"
             android:layout_marginBottom="8dp" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="palavra1 palavra2 palavra3…"
+            android:hint="palavra1 palavra2 palavra3… ou xpub6C…"
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_marginBottom="8dp"
             app:boxStrokeColor="@color/gb_border_soft"
@@ -74,6 +82,15 @@
                 android:paddingBottom="14dp" />
 
         </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_scan_restore"
+            style="@style/Gameboy.Button.Outline"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="📷 Escanear QR (mnemonic ou xpub)"
+            android:textSize="11sp"
+            android:layout_marginBottom="8dp" />
 
         <!-- Contador de palavras -->
         <TextView
