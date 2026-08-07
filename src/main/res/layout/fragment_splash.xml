@@ -38,14 +38,13 @@
             android:alpha="0"
             android:layout_marginBottom="24dp" />
 
-        <TextView
-            android:id="@+id/tv_splash_title"
-            android:layout_width="wrap_content"
+        <ImageView
+            android:id="@+id/img_splash_logo"
+            android:layout_width="240dp"
             android:layout_height="wrap_content"
-            android:text="POKéWALLET"
-            android:textSize="22sp"
-            style="@style/Gameboy.Title"
-            android:textColor="@color/primary_red"
+            android:src="@drawable/logo_pokewallet"
+            android:contentDescription="@string/app_name"
+            android:adjustViewBounds="true"
             android:alpha="0" />
 
     </LinearLayout>

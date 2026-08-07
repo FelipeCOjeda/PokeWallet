@@ -34,7 +34,7 @@ class SplashFragment : Fragment() {
 
         val pikachu  = view.findViewById<ImageView>(R.id.img_splash_pikachu)
         val pokeball = view.findViewById<ImageView>(R.id.img_splash_pokeball)
-        val title    = view.findViewById<TextView>(R.id.tv_splash_title)
+        val title    = view.findViewById<ImageView>(R.id.img_splash_logo)
         val hint     = view.findViewById<TextView>(R.id.tv_splash_hint)
         val flash    = view.findViewById<View>(R.id.view_splash_flash)
 

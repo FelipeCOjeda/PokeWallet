@@ -58,14 +58,13 @@
         android:text="⚡"
         android:textSize="40sp" />
 
-    <TextView
-        android:layout_width="wrap_content"
+    <ImageView
+        android:layout_width="220dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:text="POKéWALLET"
-        android:textSize="20sp"
-        style="@style/Gameboy.Title"
-        android:textColor="@color/primary_red" />
+        android:src="@drawable/logo_pokewallet"
+        android:contentDescription="@string/app_name"
+        android:adjustViewBounds="true" />
 
     <TextView
         android:layout_width="wrap_content"
