@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_overworld_repeat">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_gameboy_box"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🎲 DADOS FÍSICOS"
+            android:textSize="13sp"
+            style="@style/Gameboy.Title"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Jogue um dado comum de 6 lados e registre cada resultado. Mínimo 20 lançamentos — o recomendado é pelo menos 99 para entropia plena."
+            android:textSize="13sp"
+            android:textColor="@color/gb_border_soft"
+            android:lineSpacingExtra="3dp"
+            android:layout_marginBottom="20dp" />
+
+        <TextView
+            android:id="@+id/tv_dice_progress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="0 / 99 lançamentos (recomendado)"
+            android:textSize="12sp"
+            android:textColor="@color/gb_border"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="8dp" />
+
+        <ProgressBar
+            android:id="@+id/pb_dice_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="10dp"
+            android:max="99"
+            android:progress="0"
+            android:progressTint="@color/bitcoin_orange"
+            android:layout_marginBottom="24dp" />
+
+        <GridLayout
+            android:id="@+id/grid_dice_faces"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:columnCount="3"
+            android:rowCount="2"
+            android:layout_marginBottom="16dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_dice_1"
+                style="@style/Gameboy.Button"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_columnWeight="1"
+                android:layout_margin="4dp"
+                android:text="⚀"
+                android:textSize="24sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_dice_2"
+                style="@style/Gameboy.Button"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_columnWeight="1"
+                android:layout_margin="4dp"
+                android:text="⚁"
+                android:textSize="24sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_dice_3"
+                style="@style/Gameboy.Button"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_columnWeight="1"
+                android:layout_margin="4dp"
+                android:text="⚂"
+                android:textSize="24sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_dice_4"
+                style="@style/Gameboy.Button"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_columnWeight="1"
+                android:layout_margin="4dp"
+                android:text="⚃"
+                android:textSize="24sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_dice_5"
+                style="@style/Gameboy.Button"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_columnWeight="1"
+                android:layout_margin="4dp"
+                android:text="⚄"
+                android:textSize="24sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_dice_6"
+                style="@style/Gameboy.Button"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_columnWeight="1"
+                android:layout_margin="4dp"
+                android:text="⚅"
+                android:textSize="24sp" />
+
+        </GridLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_dice_undo"
+            style="@style/Gameboy.Button.Outline"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="↩ Apagar último"
+            android:textSize="10sp"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Erro -->
+        <TextView
+            android:id="@+id/tv_dice_roll_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/error_red"
+            android:textSize="13sp"
+            android:lineSpacingExtra="3dp"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
+
+        <!-- Botões -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_cancel_dice_roll"
+                style="@style/Gameboy.Button.Outline"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:text="Cancelar"
+                android:textSize="12sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_confirm_dice_roll"
+                style="@style/Gameboy.Button"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:text="Concluir"
+                android:textSize="12sp"
+                android:enabled="false"
+                app:backgroundTint="@color/accent_yellow" />
+
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

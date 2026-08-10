@@ -3,18 +3,32 @@ package com.pokewallet.commands
 import com.pokewallet.crypto.Network
 import com.pokewallet.crypto.WalletStorage
 import com.pokewallet.network.BlockstreamClient
+import com.pokewallet.network.ChainDataSource
+import com.pokewallet.network.ElectrumClient
 import com.pokewallet.network.WalletScanner
 import kotlinx.coroutines.runBlocking
 
 /**
- * scan — Varre a wallet via Blockstream API (sem Bitcoin Core).
+ * scan — Varre a wallet via Blockstream API por padrão, ou via um node
+ * Electrum próprio (ex: florestad) com `--electrum=host:port`.
  *
  * Usa o xpub armazenado no wallet.json + gap limit BIP44.
  * Atualiza nextExternalIndex e nextInternalIndex no wallet.json.
  */
 object ScanCommand {
 
-    fun run(verbose: Boolean = false, forceTestnet: Boolean = false) {
+    fun run(verbose: Boolean = false, forceTestnet: Boolean = false, electrumServer: String? = null) {
+
+        val dataSource: ChainDataSource = electrumServer?.let { spec ->
+            val (host, portStr) = spec.split(":", limit = 2).let {
+                require(it.size == 2) { "--electrum precisa ser host:porta (ex: --electrum=127.0.0.1:50001)" }
+                it[0] to it[1]
+            }
+            val port = portStr.toIntOrNull()
+                ?: error("Porta inválida em --electrum=$spec")
+            println("🌲 Usando node próprio via Electrum: $host:$port (sem Blockstream/mempool.space)")
+            ElectrumClient(host, port)
+        } ?: BlockstreamClient
 
         val wallet = WalletStorage.load()
 
@@ -43,17 +57,22 @@ object ScanCommand {
             println("   ⚠️  Modo --testnet: endereços tb1q (não bcrt1q)")
         println()
 
-        val result = runBlocking {
-            WalletScanner.scan(
-                xpub     = xpub,
-                network  = network,
-                onProgress = { chain, index, address ->
-                    if (verbose) {
-                        val label = if (chain == 0) "ext" else "int"
-                        print("  [$label/$index] $address\r")
+        val result = try {
+            runBlocking {
+                WalletScanner.scan(
+                    xpub       = xpub,
+                    network    = network,
+                    dataSource = dataSource,
+                    onProgress = { chain, index, address ->
+                        if (verbose) {
+                            val label = if (chain == 0) "ext" else "int"
+                            print("  [$label/$index] $address\r")
+                        }
                     }
-                }
-            )
+                )
+            }
+        } finally {
+            (dataSource as? ElectrumClient)?.close()
         }
 
         if (verbose) println()

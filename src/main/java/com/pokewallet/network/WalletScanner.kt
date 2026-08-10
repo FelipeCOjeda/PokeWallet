@@ -4,7 +4,9 @@ import com.pokewallet.crypto.Network
 import com.pokewallet.crypto.SpendType
 
 /**
- * Varre uma HD wallet via Blockstream API usando BIP44 gap limit.
+ * Varre uma HD wallet usando BIP44 gap limit, via qualquer [ChainDataSource]
+ * (Blockstream/mempool.space por padrão, ou um node próprio via
+ * [ElectrumClient]).
  *
  * Algoritmo:
  *   Para cada chain (externa=0, interna=1):
@@ -25,8 +27,8 @@ object WalletScanner {
         val chain: Int,                           // 0 = externo, 1 = interno
         val index: Int,
         val address: String,
-        val stats: BlockstreamClient.AddressStats,
-        val utxos: List<BlockstreamClient.Utxo>
+        val stats: AddressStats,
+        val utxos: List<RemoteUtxo>
     ) {
         val balanceSats: Long get() = utxos.sumOf { it.valueSats }
     }
@@ -94,6 +96,9 @@ object WalletScanner {
      *   start*Index. Vazio (padrão) = comportamento idêntico ao scan
      *   completo de sempre.
      * @param onProgress Callback opcional chamado a cada endereço varrido
+     * @param dataSource De onde vêm saldo/UTXOs — API pública por padrão;
+     *   passe um [ElectrumClient] pra escanear via node próprio, sem
+     *   depender de Blockstream/mempool.space.
      */
     suspend fun scan(
         xpub: String,
@@ -104,10 +109,11 @@ object WalletScanner {
         startInternalIndex: Int = 0,
         knownActiveExternal: Set<Int> = emptySet(),
         knownActiveInternal: Set<Int> = emptySet(),
-        onProgress: ((chain: Int, index: Int, address: String) -> Unit)? = null
+        onProgress: ((chain: Int, index: Int, address: String) -> Unit)? = null,
+        dataSource: ChainDataSource = BlockstreamClient
     ): ScanResult {
-        val external = scanChain(xpub, network, spendType, chain = 0, startExternalIndex, knownActiveExternal, gapLimit, onProgress)
-        val internal = scanChain(xpub, network, spendType, chain = 1, startInternalIndex, knownActiveInternal, gapLimit, onProgress)
+        val external = scanChain(xpub, network, spendType, chain = 0, startExternalIndex, knownActiveExternal, gapLimit, onProgress, dataSource)
+        val internal = scanChain(xpub, network, spendType, chain = 1, startInternalIndex, knownActiveInternal, gapLimit, onProgress, dataSource)
 
         val all       = external.scanned + internal.scanned
         val withFunds = all.filter { it.utxos.isNotEmpty() }
@@ -147,7 +153,8 @@ object WalletScanner {
         startIndex: Int,
         knownActive: Set<Int>,
         gapLimit: Int,
-        onProgress: ((Int, Int, String) -> Unit)?
+        onProgress: ((Int, Int, String) -> Unit)?,
+        dataSource: ChainDataSource
     ): ChainResult {
         val scanned = mutableListOf<ScannedAddress>()
 
@@ -157,8 +164,8 @@ object WalletScanner {
                 SpendType.BIP86 -> XpubAddressDeriver.p2trAddress(xpub, chain, index, network)
             }
             onProgress?.invoke(chain, index, address)
-            val stats = BlockstreamClient.getAddressStats(address, network)
-            val utxos = if (stats.hasActivity) BlockstreamClient.getUtxos(address, network) else emptyList()
+            val stats = dataSource.getAddressStats(address, network)
+            val utxos = if (stats.hasActivity) dataSource.getUtxos(address, network) else emptyList()
             return ScannedAddress(chain, index, address, stats, utxos)
         }
 

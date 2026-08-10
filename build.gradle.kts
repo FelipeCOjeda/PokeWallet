@@ -66,4 +66,11 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     testImplementation("junit:junit:4.13.2")
+
+    // org.json.* vem do android.jar em produção (stub que sempre existe no
+    // device real) — mas testDebugUnitTest roda em JVM puro, onde o android.jar
+    // de teste é um stub que lança "not mocked" em qualquer método real
+    // (ex: JSONObject.put()). Implementação de verdade só pro classpath de
+    // teste resolve sem afetar o app em produção.
+    testImplementation("org.json:json:20240303")
 }

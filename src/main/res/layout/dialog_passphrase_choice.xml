@@ -271,6 +271,52 @@
 
         </LinearLayout>
 
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/gb_border_soft"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Entropia extra (dice roll) -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ENTROPIA EXTRA"
+            android:textSize="10sp"
+            style="@style/Gameboy.Label"
+            android:layout_marginBottom="10dp" />
+
+        <CheckBox
+            android:id="@+id/cb_use_dice_roll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🎲 Adicionar dados físicos (dice roll)"
+            android:textColor="@color/gb_border"
+            android:textStyle="bold"
+            android:buttonTint="@color/bitcoin_orange"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Opcional. Combina lançamentos reais de um dado comum com o gerador do sistema — proteção extra caso o gerador aleatório do aparelho seja algum dia comprometido. Nunca deixa a wallet menos segura, só mais."
+            android:textSize="12sp"
+            android:textColor="@color/gb_border_soft"
+            android:lineSpacingExtra="2dp"
+            android:layout_marginBottom="12dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_dice_roll"
+            style="@style/Gameboy.Button.Outline"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="🎲 Lançar dados"
+            android:textSize="10sp"
+            android:visibility="gone"
+            android:layout_marginBottom="8dp" />
+
         <!-- Erro -->
         <TextView
             android:id="@+id/tv_passphrase_choice_error"

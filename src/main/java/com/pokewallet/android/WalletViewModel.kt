@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.pokewallet.crypto.*
 import com.pokewallet.network.BlockstreamClient
+import com.pokewallet.network.FeeEstimates
+import com.pokewallet.network.RemoteUtxo
 import com.pokewallet.network.WalletScanner
 import com.pokewallet.nostr.GeoRelayDirectory
 import com.pokewallet.nostr.NostrEvent
@@ -213,8 +215,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     private val _priceState = MutableStateFlow<BlockstreamClient.BtcPrices?>(null)
     val priceState: StateFlow<BlockstreamClient.BtcPrices?> = _priceState.asStateFlow()
 
-    private val _feeState = MutableStateFlow<BlockstreamClient.FeeEstimates?>(null)
-    val feeState: StateFlow<BlockstreamClient.FeeEstimates?> = _feeState.asStateFlow()
+    private val _feeState = MutableStateFlow<FeeEstimates?>(null)
+    val feeState: StateFlow<FeeEstimates?> = _feeState.asStateFlow()
 
     private val _pendingTxEvent = MutableSharedFlow<Long>(replay = 0)
     val pendingTxEvent: SharedFlow<Long> = _pendingTxEvent.asSharedFlow()
@@ -452,14 +454,14 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 val fees    = withContext(Dispatchers.IO) { BlockstreamClient.getFeeEstimates(network) }
                 _feeState.value = fees
             } catch (_: Exception) {
-                if (_feeState.value == null) _feeState.value = BlockstreamClient.FeeEstimates.FALLBACK
+                if (_feeState.value == null) _feeState.value = FeeEstimates.FALLBACK
             }
         }
     }
 
     /** Taxa sugerida (prioridade alta / confirmação mais rápida) pra pré-popular a UI de envio. */
-    fun getCurrentFeeEstimates(): BlockstreamClient.FeeEstimates =
-        _feeState.value ?: BlockstreamClient.FeeEstimates.FALLBACK
+    fun getCurrentFeeEstimates(): FeeEstimates =
+        _feeState.value ?: FeeEstimates.FALLBACK
 
     /** Força uma varredura imediata (sem esperar o ciclo de 60s) — usado pelo
      *  botão Home, além do refresh automático já rodando em startAutoScan(). */
@@ -599,7 +601,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         passphraseMode: PassphraseMode = PassphraseMode.Pokemon,
         wordCount: Int = 24,
         spendType: SpendType = SpendType.BIP84,
-        customName: String? = null
+        customName: String? = null,
+        diceRolls: List<Int>? = null
     ) {
         _walletState.value = WalletState.Creating
         val context = getApplication<Application>()
@@ -608,7 +611,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     withContext(Dispatchers.IO) {
                         createWalletIntoPendingSlot(context) {
-                            WalletInit.run(network, passphraseMode, wordCount, spendType)
+                            WalletInit.run(network, passphraseMode, wordCount, spendType, diceRolls)
                         }
                     }
                     val wallet = withContext(Dispatchers.IO) { WalletStorage.load() }
@@ -1191,7 +1194,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Um UTXO candidato a ser gasto, com o endereço (chain/index) que o controla. */
-    private class SpendCandidate(val addr: com.pokewallet.network.WalletScanner.ScannedAddress, val utxo: BlockstreamClient.Utxo)
+    private class SpendCandidate(val addr: com.pokewallet.network.WalletScanner.ScannedAddress, val utxo: RemoteUtxo)
 
     private class ResolvedSpend(
         val chosen: List<SpendCandidate>,
@@ -1824,25 +1827,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun addressToScriptPubKey(address: String, network: Network): ByteArray {
-        val (hrp, data) = Bech32.decode(address) ?: error("Endereço inválido: $address")
-        require(hrp == network.hrp) {
-            "Endereço de destino é de outra rede (prefixo \"$hrp\", esperado \"${network.hrp}\") — confira se não colou um endereço testnet numa wallet mainnet (ou vice-versa)."
-        }
-        require(data.isNotEmpty())
-        val witnessVersion = data[0].toInt()
-        require(witnessVersion in 0..16) { "Versão de witness inválida no endereço: $witnessVersion" }
-        val program5bit    = data.copyOfRange(1, data.size)
-        val prog5Bytes     = ByteArray(program5bit.size) { program5bit[it].toByte() }
-        val progInts       = Bech32.convertBits(prog5Bytes, 5, 8, false)
-        val programBytes   = ByteArray(progInts.size) { progInts[it].toByte() }
-        require(
-            if (witnessVersion == 0) programBytes.size == 20 || programBytes.size == 32
-            else programBytes.size in 2..40
-        ) { "Tamanho de programa inválido pra witness v$witnessVersion no endereço: ${programBytes.size} bytes" }
-        val versionOpcode  = if (witnessVersion == 0) 0x00.toByte() else (0x50 + witnessVersion).toByte()
-        return byteArrayOf(versionOpcode, programBytes.size.toByte()) + programBytes
-    }
+    private fun addressToScriptPubKey(address: String, network: Network): ByteArray =
+        AddressCodec.addressToScriptPubKey(address, network)
 
     private fun hexToBytes(hex: String): ByteArray =
         ByteArray(hex.length / 2) { i -> hex.substring(i * 2, i * 2 + 2).toInt(16).toByte() }

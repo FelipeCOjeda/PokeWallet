@@ -91,7 +91,7 @@ object SendCommand {
             val totalInputSats = spendable.sumOf { it.valueSats }
 
             // ── Destination scriptPubKey ──────────────────────────────
-            val destSpk = addressToScriptPubKey(destination)
+            val destSpk = AddressCodec.addressToScriptPubKey(destination, network)
 
             // ── Amount + troco ──────────────────────────────────────────
             val requestedAmount: Long? = if (sweep) {
@@ -176,23 +176,6 @@ object SendCommand {
     }
 
     // ── Helpers ────────────────────────────────────────────────────
-
-    private fun addressToScriptPubKey(address: String): ByteArray {
-        val (_, data) = Bech32.decode(address)
-            ?: error("Endereço bech32 inválido: $address")
-        require(data.isNotEmpty()) { "Endereço bech32 vazio" }
-
-        val witnessVersion = data[0]
-        val program5bit    = data.copyOfRange(1, data.size)
-
-        // IntArray de 5-bit → ByteArray → convertBits → ByteArray 8-bit
-        val prog5Bytes = ByteArray(program5bit.size) { program5bit[it].toByte() }
-        val progInts   = Bech32.convertBits(prog5Bytes, 5, 8, false)
-        val programBytes = ByteArray(progInts.size) { progInts[it].toByte() }
-
-        val versionOpcode = if (witnessVersion == 0) 0x00.toByte() else (0x50 + witnessVersion).toByte()
-        return byteArrayOf(versionOpcode, programBytes.size.toByte()) + programBytes
-    }
 
     private fun hexToBytes(hex: String): ByteArray {
         val len = hex.length

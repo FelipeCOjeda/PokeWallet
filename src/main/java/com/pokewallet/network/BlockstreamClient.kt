@@ -6,7 +6,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-object BlockstreamClient {
+object BlockstreamClient : ChainDataSource {
 
     /**
      * Provedores Esplora, em ORDEM de preferência — Blockstream e
@@ -38,79 +38,31 @@ object BlockstreamClient {
     }
 
     // ── Models ────────────────────────────────────────
-
-    data class AddressStats(
-        val address: String,
-        val fundedTxoCount: Int,
-        val fundedTxoSum: Long,
-        val spentTxoCount: Int,
-        val spentTxoSum: Long,
-        val txCount: Int,
-        val mempoolFundedSum: Long,
-        val mempoolSpentSum: Long,
-        val mempoolTxCount: Int
-    ) {
-        val confirmedSats: Long get() = fundedTxoSum - spentTxoSum
-        val pendingSats: Long get() = mempoolFundedSum - mempoolSpentSum
-        val balanceSats: Long get() = confirmedSats + pendingSats
-        val hasActivity: Boolean get() = txCount > 0 || mempoolTxCount > 0
-    }
-
-    data class Utxo(
-        val txid: String,
-        val vout: Int,
-        val valueSats: Long,
-        val confirmed: Boolean,
-        val blockHeight: Int?
-    )
-
-    data class FeeEstimates(
-        val fastest: Double,
-        val halfHour: Double,
-        val hour: Double,
-        /** meta em nº de blocos -> sat/vB, direto da API — usado pra estimar
-         *  tempo de confirmação de uma taxa arbitrária escolhida pelo usuário */
-        val byBlockTarget: Map<Int, Double>
-    ) {
-        companion object {
-            /** Usado quando a API está fora do ar — mantém a UI de taxa
-             *  funcional (com estimativa aproximada) em vez de travar o envio. */
-            val FALLBACK = FeeEstimates(
-                fastest       = 20.0,
-                halfHour      = 10.0,
-                hour          = 5.0,
-                byBlockTarget = mapOf(1 to 20.0, 3 to 10.0, 6 to 5.0)
-            )
-        }
-    }
+    // AddressStats/RemoteUtxo/FeeEstimates são compartilhados — ver ChainModels.kt.
 
     data class BtcPrices(val usd: Double, val brl: Double)
 
-    // ── API calls ─────────────────────────────────────
+    // ── API calls (ChainDataSource) ────────────────────
 
-    fun getAddressStats(address: String, network: Network): AddressStats {
+    override fun getAddressStats(address: String, network: Network): AddressStats {
         val json    = JSONObject(getWithFallback(network, "/address/$address"))
         val chain   = json.getJSONObject("chain_stats")
         val mempool = json.getJSONObject("mempool_stats")
         return AddressStats(
-            address          = address,
-            fundedTxoCount   = chain.getInt("funded_txo_count"),
-            fundedTxoSum     = chain.getLong("funded_txo_sum"),
-            spentTxoCount    = chain.getInt("spent_txo_count"),
-            spentTxoSum      = chain.getLong("spent_txo_sum"),
-            txCount          = chain.getInt("tx_count"),
-            mempoolFundedSum = mempool.getLong("funded_txo_sum"),
-            mempoolSpentSum  = mempool.getLong("spent_txo_sum"),
-            mempoolTxCount   = mempool.getInt("tx_count")
+            address        = address,
+            confirmedSats  = chain.getLong("funded_txo_sum") - chain.getLong("spent_txo_sum"),
+            pendingSats    = mempool.getLong("funded_txo_sum") - mempool.getLong("spent_txo_sum"),
+            txCount        = chain.getInt("tx_count"),
+            mempoolTxCount = mempool.getInt("tx_count")
         )
     }
 
-    fun getUtxos(address: String, network: Network): List<Utxo> {
+    override fun getUtxos(address: String, network: Network): List<RemoteUtxo> {
         val array = JSONArray(getWithFallback(network, "/address/$address/utxo"))
         return (0 until array.length()).map { i ->
             val obj    = array.getJSONObject(i)
             val status = obj.getJSONObject("status")
-            Utxo(
+            RemoteUtxo(
                 txid        = obj.getString("txid"),
                 vout        = obj.getInt("vout"),
                 valueSats   = obj.getLong("value"),
@@ -120,7 +72,7 @@ object BlockstreamClient {
         }
     }
 
-    fun getFeeEstimates(network: Network): FeeEstimates {
+    override fun getFeeEstimates(network: Network): FeeEstimates {
         val json = JSONObject(getWithFallback(network, "/fee-estimates"))
         val byBlockTarget = sortedMapOf<Int, Double>()
         json.keys().forEach { key ->
@@ -134,7 +86,7 @@ object BlockstreamClient {
         )
     }
 
-    fun broadcast(rawHex: String, network: Network): String =
+    override fun broadcast(rawHex: String, network: Network): String =
         postWithFallback(network, "/tx", rawHex).trim()
 
     fun getAddressTxs(address: String, network: Network): List<JSONObject> {

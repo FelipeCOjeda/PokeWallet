@@ -11,7 +11,8 @@ object WalletInit {
         network: Network = Network.REGTEST,
         passphraseMode: PassphraseMode = PassphraseMode.Pokemon,
         wordCount: Int = 24,
-        spendType: SpendType = SpendType.BIP84
+        spendType: SpendType = SpendType.BIP84,
+        diceRolls: List<Int>? = null
     ) {
         require(wordCount == 12 || wordCount == 24) { "wordCount deve ser 12 ou 24" }
 
@@ -27,7 +28,11 @@ object WalletInit {
         // -----------------------------
         // Seed + mnemonic
         // -----------------------------
-        val entropy = CryptoUtils.randomEntropy(if (wordCount == 12) 16 else 32)
+        val entropyByteSize = if (wordCount == 12) 16 else 32
+        val entropy = if (diceRolls != null)
+            DiceEntropy.mixEntropy(diceRolls, entropyByteSize)
+        else
+            CryptoUtils.randomEntropy(entropyByteSize)
         val mnemonicWords = Bip39.generateMnemonic(entropy)
         val mnemonic = mnemonicWords.joinToString(" ")
         val passphrase = when (passphraseMode) {
@@ -130,6 +135,8 @@ object WalletInit {
             .put("mnemonicVerified", false)
             .put("passphraseMode", passphraseMode.tag())
             .put("isWatchOnly", false)
+            .put("diceRollsUsed", diceRolls != null)
+            .put("diceRollCount", diceRolls?.size ?: 0)
 
         WalletStorage.saveRaw(json)
 
@@ -183,6 +190,9 @@ object WalletInit {
         println("Spend type  : ${spendType.name}")
         println("Fingerprint : $fingerprintHex")
         println("XPUB        : $xpub")
+        if (diceRolls != null) {
+            println("Entropia    : SecureRandom + ${diceRolls.size} lançamentos de dado")
+        }
 
         println("\n⚠️  ATENÇÃO IMPORTANTE")
         when (passphraseMode) {

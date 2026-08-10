@@ -4,6 +4,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.view.WindowManager
+import android.widget.CheckBox
 import android.widget.ProgressBar
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -16,6 +17,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.textfield.TextInputEditText
 import com.pokewallet.R
+import com.pokewallet.crypto.DiceEntropy
 import com.pokewallet.crypto.Network
 import com.pokewallet.crypto.PassphraseMode
 import com.pokewallet.crypto.SpendType
@@ -55,6 +57,33 @@ object WalletCreationFlow {
         val tvError       = dialogView.findViewById<TextView>(R.id.tv_passphrase_choice_error)
         val btnCancel     = dialogView.findViewById<MaterialButton>(R.id.btn_cancel_passphrase_choice)
         val btnConfirm    = dialogView.findViewById<MaterialButton>(R.id.btn_confirm_passphrase_choice)
+        val cbUseDiceRoll = dialogView.findViewById<CheckBox>(R.id.cb_use_dice_roll)
+        val btnDiceRoll   = dialogView.findViewById<MaterialButton>(R.id.btn_dice_roll)
+
+        // Lançamentos já coletados (vazio = nenhum ainda). Mínimo fixo de
+        // DiceEntropy.MIN_ROLLS pra habilitar — não depende mais da
+        // contagem de palavras escolhida.
+        var diceRolls: List<Int> = emptyList()
+
+        fun updateDiceButtonLabel() {
+            btnDiceRoll.text = if (diceRolls.size >= DiceEntropy.MIN_ROLLS)
+                "🎲 ${diceRolls.size} lançamentos ✓"
+            else
+                "🎲 Lançar dados (0/${DiceEntropy.MIN_ROLLS})"
+        }
+
+        cbUseDiceRoll.setOnCheckedChangeListener { _, checked ->
+            btnDiceRoll.visibility = if (checked) View.VISIBLE else View.GONE
+            tvError.visibility = View.GONE
+            if (checked) updateDiceButtonLabel()
+        }
+
+        btnDiceRoll.setOnClickListener {
+            showDiceRollDialog(fragment, diceRolls) { rolls ->
+                diceRolls = rolls
+                updateDiceButtonLabel()
+            }
+        }
 
         radioGroup.setOnCheckedChangeListener { _, checkedId ->
             groupCustom.visibility = if (checkedId == R.id.rb_passphrase_custom)
@@ -99,10 +128,107 @@ object WalletCreationFlow {
                 SpendType.BIP86 else SpendType.BIP84
             val customName  = etWalletName.text?.toString()?.trim()
 
-            dialog.dismiss()
-            viewModel.createWallet(Network.MAINNET, mode, wordCount, spendType, customName)
+            fun finish(rolls: List<Int>?) {
+                dialog.dismiss()
+                viewModel.createWallet(Network.MAINNET, mode, wordCount, spendType, customName, rolls)
+            }
+
+            if (cbUseDiceRoll.isChecked) {
+                if (diceRolls.size < DiceEntropy.MIN_ROLLS) {
+                    tvError.text       = "Lance pelo menos ${DiceEntropy.MIN_ROLLS} dados antes de continuar (faltam ${DiceEntropy.MIN_ROLLS - diceRolls.size})."
+                    tvError.visibility = View.VISIBLE
+                    return@setOnClickListener
+                }
+                if (diceRolls.size < DiceEntropy.RECOMMENDED_ROLLS) {
+                    AlertDialog.Builder(context, R.style.Theme_PokéWallet_Dialog)
+                        .setTitle("⚠️ Poucos lançamentos")
+                        .setMessage(
+                            "O recomendado é pelo menos ${DiceEntropy.RECOMMENDED_ROLLS} lançamentos pra entropia " +
+                            "plena. Você tem ${diceRolls.size} (~${"%.0f".format(DiceEntropy.entropyBits(diceRolls.size))} bits).\n\n" +
+                            "Continuar mesmo assim?"
+                        )
+                        .setPositiveButton("Continuar mesmo assim") { _, _ -> finish(diceRolls) }
+                        .setNegativeButton("Voltar e adicionar mais", null)
+                        .show()
+                } else {
+                    finish(diceRolls)
+                }
+            } else {
+                finish(null)
+            }
         }
 
+        dialog.show()
+        dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+    }
+
+    /** Diálogo de lançamento de dados (dice roll) — recebe os lançamentos já
+     *  coletados (pra retomar de onde parou se o usuário reabrir). A barra
+     *  de progresso mostra o caminho até o RECOMENDADO (99), mas o botão
+     *  "Concluir" já habilita a partir do MÍNIMO (20) — a checagem de
+     *  "recomendado vs mínimo" com aviso acontece só na confirmação final
+     *  do diálogo de criação, não aqui. [onDone] só é chamado ao confirmar;
+     *  cancelar preserva os lançamentos anteriores. */
+    private fun showDiceRollDialog(
+        fragment: Fragment,
+        existingRolls: List<Int>,
+        onDone: (List<Int>) -> Unit
+    ) {
+        val context = fragment.requireContext()
+        val dialogView    = fragment.layoutInflater.inflate(R.layout.dialog_dice_roll, null)
+        val tvProgress    = dialogView.findViewById<TextView>(R.id.tv_dice_progress)
+        val pbProgress    = dialogView.findViewById<ProgressBar>(R.id.pb_dice_progress)
+        val tvError       = dialogView.findViewById<TextView>(R.id.tv_dice_roll_error)
+        val btnUndo       = dialogView.findViewById<MaterialButton>(R.id.btn_dice_undo)
+        val btnCancel     = dialogView.findViewById<MaterialButton>(R.id.btn_cancel_dice_roll)
+        val btnConfirm    = dialogView.findViewById<MaterialButton>(R.id.btn_confirm_dice_roll)
+        val faceButtons   = listOf(
+            R.id.btn_dice_1, R.id.btn_dice_2, R.id.btn_dice_3,
+            R.id.btn_dice_4, R.id.btn_dice_5, R.id.btn_dice_6
+        ).map { dialogView.findViewById<MaterialButton>(it) }
+
+        val rolls = existingRolls.toMutableList()
+
+        fun refresh() {
+            tvProgress.text = "${rolls.size} / ${DiceEntropy.RECOMMENDED_ROLLS} lançamentos (recomendado)"
+            pbProgress.progress = rolls.size.coerceAtMost(DiceEntropy.RECOMMENDED_ROLLS)
+            btnConfirm.isEnabled = rolls.size >= DiceEntropy.MIN_ROLLS
+            btnUndo.isEnabled = rolls.isNotEmpty()
+            if (rolls.isNotEmpty()) tvError.visibility = View.GONE
+        }
+
+        faceButtons.forEachIndexed { index, button ->
+            button.setOnClickListener {
+                rolls.add(index + 1)
+                refresh()
+            }
+        }
+
+        btnUndo.setOnClickListener {
+            if (rolls.isNotEmpty()) {
+                rolls.removeAt(rolls.lastIndex)
+                refresh()
+            }
+        }
+
+        val dialog = AlertDialog.Builder(context, R.style.Theme_PokéWallet_Dialog)
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+
+        btnConfirm.setOnClickListener {
+            if (rolls.size < DiceEntropy.MIN_ROLLS) {
+                tvError.text       = "Lance pelo menos ${DiceEntropy.MIN_ROLLS} dados antes de continuar."
+                tvError.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            dialog.dismiss()
+            onDone(rolls.toList())
+        }
+
+        refresh()
         dialog.show()
         dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
     }
