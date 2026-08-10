@@ -368,6 +368,19 @@
                         android:text="🔑 Ver Chave Pública"
                         android:textSize="10sp" />
 
+                    <!-- Força uma varredura completa (índice 0 em diante) em vez da
+                         incremental — usado quando um saldo não aparece mesmo com o
+                         endereço certo (ex.: índice reservado ficou pra trás da
+                         fronteira do scan incremental antes de receber fundos). -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_force_full_rescan"
+                        style="@style/Gameboy.Button.Outline"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginBottom="12dp"
+                        android:text="🔁 Forçar rescan completo"
+                        android:textSize="10sp" />
+
                     <!-- Assinatura air-gapped — só faz sentido numa carteira com
                          seed (assina PSBT de uma carteira watch-only pareada);
                          escondido em runtime pra carteira watch-only -->

@@ -237,6 +237,15 @@ object WalletStorage {
         val wallet = loadLocked()
         val index = wallet.nextInternalIndex
         wallet.nextInternalIndex = index + 1
+        // Marca já como "ativo" no momento da reserva, não só quando o scan
+        // encontra atividade nele. Sem isso: reservar de novo (ex.: abrir
+        // Receber duas vezes) avança nextExternalIndex/nextInternalIndex
+        // pra além deste índice, e como ele nunca tinha atividade conhecida,
+        // o scan incremental (que só reverifica knownActive + a fronteira
+        // atual pra frente) para de olhar pra ele pra sempre — um pagamento
+        // que chegasse aqui depois ficaria invisível mesmo com o endereço
+        // certo e o scan rodando sem erro.
+        wallet.activeInternalIndices = wallet.activeInternalIndices + index
         saveLocked(wallet)
         index
     }
@@ -246,6 +255,7 @@ object WalletStorage {
         val wallet = loadLocked()
         val index = wallet.nextExternalIndex
         wallet.nextExternalIndex = index + 1
+        wallet.activeExternalIndices = wallet.activeExternalIndices + index
         saveLocked(wallet)
         index
     }

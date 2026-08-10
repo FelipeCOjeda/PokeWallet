@@ -474,6 +474,23 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { doScan() }
     }
 
+    /** Força a PRÓXIMA varredura a ser completa (índice 0 em diante em vez de
+     *  incremental) — corrige o caso de um endereço reservado (Receber/troco)
+     *  ter ficado pra trás da fronteira do scan incremental antes de receber
+     *  fundos, e por isso nunca mais é reverificado. Botão "🔁 Forçar rescan
+     *  completo" na Mochila. */
+    fun forceFullRescan() {
+        if ((_walletState.value as? WalletState.Loaded)?.isScanning == true) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val wallet = WalletStorage.load()
+                wallet.needsFullRescan = true
+                WalletStorage.save(wallet)
+            }
+            doScan()
+        }
+    }
+
     private fun loadTxHistory(addresses: List<com.pokewallet.network.WalletScanner.ScannedAddress>, network: Network) {
         viewModelScope.launch {
             try {

@@ -104,6 +104,7 @@ class WalletFragment : Fragment() {
         val btnViewAddresses = view.findViewById<MaterialButton>(R.id.btn_view_addresses)
         val btnViewUtxos     = view.findViewById<MaterialButton>(R.id.btn_view_utxos)
         val btnViewPublicKey = view.findViewById<MaterialButton>(R.id.btn_view_public_key)
+        val btnForceFullRescan = view.findViewById<MaterialButton>(R.id.btn_force_full_rescan)
         val tvSeedBackup     = view.findViewById<TextView>(R.id.tv_seed_backup_status)
         val btnSignAirGapped = view.findViewById<MaterialButton>(R.id.btn_sign_airgapped_psbt)
         val btnForget        = view.findViewById<MaterialButton>(R.id.btn_forget)
@@ -170,6 +171,7 @@ class WalletFragment : Fragment() {
         btnViewAddresses.setOnClickListener { showAddressListDialog() }
         btnViewUtxos.setOnClickListener { showUtxoListDialog() }
         btnViewPublicKey.setOnClickListener { showPublicKeyDialog() }
+        btnForceFullRescan.setOnClickListener { viewModel.forceFullRescan() }
         btnSignAirGapped.setOnClickListener { startSignAirGappedPsbtFlow() }
         rowHomeSwitcher.setOnClickListener {
             if (viewModel.listKnownWallets().size <= 1) return@setOnClickListener

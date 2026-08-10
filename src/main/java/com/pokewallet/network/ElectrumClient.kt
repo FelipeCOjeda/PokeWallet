@@ -99,8 +99,12 @@ class ElectrumClient(
 
         val balance = call("blockchain.scripthash.get_balance", JSONArray(listOf(scripthash)))
             .getJSONObject("result")
-        val confirmedSats = balance.getLong("confirmed")
-        val pendingSats    = balance.getLong("unconfirmed")
+        // optLong (não getLong): um node ainda sincronizando (ex.: Floresta em
+        // IBD) pode devolver "confirmed"/"unconfirmed" como null pra um
+        // scripthash que ele ainda não indexou — tratar como 0 em vez de
+        // derrubar o scan inteiro com JSONException.
+        val confirmedSats = balance.optLong("confirmed", 0L)
+        val pendingSats    = balance.optLong("unconfirmed", 0L)
 
         val history = call("blockchain.scripthash.get_history", JSONArray(listOf(scripthash)))
             .getJSONArray("result")
