@@ -62,6 +62,7 @@ class ElectrumClient(
             ensureConnected()
             val id = nextId++
             val request = JSONObject()
+                .put("jsonrpc", "2.0")
                 .put("id", id)
                 .put("method", method)
                 .put("params", params)
