@@ -451,7 +451,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val wallet  = withContext(Dispatchers.IO) { WalletStorage.load() }
                 val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
-                val fees    = withContext(Dispatchers.IO) { BlockstreamClient.getFeeEstimates(network) }
+                val fees    = withContext(Dispatchers.IO) { NodePrefs.dataSource(getApplication()).getFeeEstimates(network) }
                 _feeState.value = fees
             } catch (_: Exception) {
                 if (_feeState.value == null) _feeState.value = FeeEstimates.FALLBACK
@@ -531,7 +531,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                     onProgress = { _, index, _ ->
                         val loaded = _walletState.value as? WalletState.Loaded ?: return@scan
                         _walletState.value = loaded.copy(scanStatus = "Verificando endereço $index…")
-                    }
+                    },
+                    dataSource = NodePrefs.dataSource(getApplication())
                 )
             }
 
@@ -1116,7 +1117,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     ): String {
         val prepared = buildSignedTx(destination, amountSats, sweep, feeRateSatPerVbyte, manualUtxoKeys)
         try {
-            return BlockstreamClient.broadcast(prepared.rawTxHex, prepared.network)
+            return NodePrefs.dataSource(getApplication()).broadcast(prepared.rawTxHex, prepared.network)
         } finally {
             prepared.seed.fill(0)
         }
@@ -1187,7 +1188,10 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
         if (fresh) return cached!!
 
-        val result = WalletScanner.scan(xpub = xpub, network = network, spendType = spendType)
+        val result = WalletScanner.scan(
+            xpub = xpub, network = network, spendType = spendType,
+            dataSource = NodePrefs.dataSource(getApplication())
+        )
         lastScanResult = result
         lastScanResultAtMs = System.currentTimeMillis()
         return result
@@ -1620,7 +1624,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val broadcastTxid = withContext(Dispatchers.IO) {
                     when (mode) {
-                        is SendMode.Internet -> BlockstreamClient.broadcast(rawTxHex, network)
+                        is SendMode.Internet -> NodePrefs.dataSource(getApplication()).broadcast(rawTxHex, network)
                         is SendMode.BitChat  -> broadcastAirGappedViaNostr(rawTxHex, expectedTxid)
                     }
                 }
