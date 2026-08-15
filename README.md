@@ -41,6 +41,30 @@ Isso significa que:
   censurada, ou simplesmente pra quem prefere não expor o IP a um serviço
   centralizado no momento do envio.
 
+## 🔒 Privacidade — o que NÃO é escondido
+
+Vale deixar explícito, sem letra miúda: consultar saldo/UTXOs (pra mostrar
+quanto você tem, atualizar a tela, calcular o que dá pra enviar) **não**
+passa pelo caminho acima — é feito direto, endereço por endereço, contra a
+API pública (Blockstream/mempool.space, por padrão) ou contra o node
+Electrum próprio que você configurar. Isso significa que:
+
+- Quem estiver do outro lado dessas consultas (o provedor público, ou o
+  operador do node Electrum se não for você mesmo) vê seu IP e, ao longo do
+  tempo, consegue reconstruir todos os endereços derivados da sua wallet —
+  mesmo sem você nunca entregar o xpub literal a ninguém.
+- O modo **Tor** (Mochila → 🧅 Configurar Tor, precisa do app Orbot
+  instalado) esconde seu IP na hora do **broadcast** de uma transação — não
+  nas consultas de saldo, que continuam diretas.
+- Se você usa um node Electrum de terceiro (não o seu), ele está na mesma
+  posição de qualquer provedor público: vê seus endereços e seu IP.
+- Rodar seu próprio node Electrum na sua rede (o cenário pretendido pelo
+  suporte a "node próprio" desta wallet) resolve o vazamento de endereços
+  pra terceiros, mas continua exigindo confiar nesse node pra não mentir
+  saldo — por isso existe o cross-check opcional (Mochila → node Electrum →
+  "Cruzar saldo com API pública"), que aceita voltar a falar com a API
+  pública só pra conferir divergência, sem forçar isso por padrão.
+
 ## Funcionalidades
 
 - **Criação e restauração de wallet** — mnemonic BIP39 de 12 ou 24 palavras.

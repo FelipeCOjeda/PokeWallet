@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.pokewallet.crypto.*
+import com.pokewallet.network.BalanceCrossChecker
 import com.pokewallet.network.BlockstreamClient
 import com.pokewallet.network.FeeEstimates
 import com.pokewallet.network.RemoteUtxo
@@ -56,7 +57,11 @@ sealed class WalletState {
          *  disso doScan() engolia qualquer exceção em silêncio, deixando o
          *  saldo parado no valor antigo sem nenhum aviso visível. Limpo
          *  (null) assim que um scan tiver sucesso de novo. */
-        val lastScanError: String? = null
+        val lastScanError: String? = null,
+        /** Não-nulo só quando o cross-check opcional (Mochila → node
+         *  Electrum → "Cruzar saldo com API pública") está ligado E achou
+         *  divergência — ver BalanceCrossChecker. */
+        val balanceCrossCheckWarning: String? = null
     ) : WalletState()
     data class Error(val message: String) : WalletState()
 }
@@ -187,6 +192,11 @@ private const val BITCHAT_GEOHASH = "6g"
  */
 private const val BITCHAT_BROADCASTER_PUBKEY_HEX =
     "ad8224492887a4b66795d0a8026a201226aeae67548631586d7a83dd40bf2707"
+
+/** Tolerância do cross-check de saldo (NodePrefs.isCrossCheckEnabled) —
+ *  evita falso positivo por divergência momentânea de mempool entre a
+ *  fonte configurada e a API pública consultadas com segundos de diferença. */
+private const val DUST_LIMIT_CROSS_CHECK_SATS = 1_000L
 
 /**
  * Intervalo base do autoScanJob. Um scan típico faz ~40+ requests HTTP
@@ -605,6 +615,32 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 lastScanTime  = Date(),
                 lastScanError = null
             )
+
+            // Opcional (Mochila → node Electrum → "Cruzar saldo com API
+            // pública") — só roda quando o node próprio está ativo, já que
+            // contra o Blockstream padrão a "fonte configurada" e a "API
+            // pública" já são a mesma coisa. Best-effort: falha aqui
+            // (Blockstream fora do ar, rate limit) não derruba o scan que
+            // já teve sucesso, só não atualiza o aviso desta vez.
+            if (NodePrefs.isEnabled(getApplication()) && NodePrefs.isCrossCheckEnabled(getApplication())
+                && result.allWithActivity.isNotEmpty()
+            ) {
+                try {
+                    val crossCheck = withContext(Dispatchers.IO) {
+                        BalanceCrossChecker.check(result.allWithActivity, network)
+                    }
+                    val warning = if (crossCheck.divergenceSats > DUST_LIMIT_CROSS_CHECK_SATS) {
+                        "⚠️ API pública reporta ${crossCheck.publicTotalSats} sat nos endereços conhecidos, " +
+                            "seu node reportou ${crossCheck.configuredTotalSats} sat — possível saldo escondido pelo node."
+                    } else null
+                    val stillLoaded = _walletState.value as? WalletState.Loaded
+                    if (stillLoaded != null) {
+                        _walletState.value = stillLoaded.copy(balanceCrossCheckWarning = warning)
+                    }
+                } catch (_: Exception) {
+                    // best-effort — ver comentário acima
+                }
+            }
 
             loadTxHistory(result.allWithActivity, network)
             consecutiveRateLimitHits = 0

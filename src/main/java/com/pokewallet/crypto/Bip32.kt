@@ -70,7 +70,16 @@ object Bip32 {
         val ilInt = BigInteger(1, il)
         val parentKeyInt = BigInteger(1, parent.privateKey)
 
-        // BIP32: invalid key if IL >= n or result == 0
+        // BIP32: invalid key if IL >= n or result == 0 — a probabilidade de
+        // qualquer um dos dois casos é ~1/2^127, nunca deve acontecer na
+        // prática. O spec diz pra tentar o PRÓXIMO índice quando isso
+        // ocorre; este app não implementa esse auto-avanço (deriveChild
+        // recebe um índice explícito do chamador) — lança exceção em vez
+        // de derivar silenciosamente uma chave que divergiria de qualquer
+        // implementação de referência no mesmo índice.
+        require(ilInt < CURVE_N) {
+            "Invalid derived key (IL >= n)"
+        }
         val childKeyInt = ilInt.add(parentKeyInt).mod(CURVE_N)
         require(childKeyInt != BigInteger.ZERO) {
             "Invalid derived key (zero)"

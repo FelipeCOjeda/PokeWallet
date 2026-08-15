@@ -7,7 +7,7 @@ import java.nio.ByteOrder
  * Serialização binária compartilhada (CompactSize/varint + inteiros
  * little-endian) do formato de transação Bitcoin e PSBT (BIP144/BIP174).
  * Antes duplicada byte-a-byte em Psbt.kt, PsbtTaproot.kt,
- * SighashCalculator.kt, TaprootSighashCalculator.kt e SegwitSigner.kt.
+ * TaprootSighashCalculator.kt e SegwitSigner.kt.
  */
 object ByteSerializer {
 

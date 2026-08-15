@@ -93,6 +93,7 @@ class WalletFragment : Fragment() {
         val tvScanStatus     = view.findViewById<TextView>(R.id.tv_scan_status)
         val tvLastScan       = view.findViewById<TextView>(R.id.tv_last_scan)
         val tvScanError      = view.findViewById<TextView>(R.id.tv_scan_error)
+        val tvCrossCheckWarning = view.findViewById<TextView>(R.id.tv_balance_cross_check_warning)
         val btnReceive       = view.findViewById<MaterialButton>(R.id.btn_receive)
         val btnSend          = view.findViewById<MaterialButton>(R.id.btn_send)
         val cardBag          = view.findViewById<View>(R.id.card_bag)
@@ -231,6 +232,13 @@ class WalletFragment : Fragment() {
                             tvScanError.visibility = View.VISIBLE
                         } else {
                             tvScanError.visibility = View.GONE
+                        }
+
+                        if (state.balanceCrossCheckWarning != null) {
+                            tvCrossCheckWarning.text       = state.balanceCrossCheckWarning
+                            tvCrossCheckWarning.visibility = View.VISIBLE
+                        } else {
+                            tvCrossCheckWarning.visibility = View.GONE
                         }
 
                         tvWalletName.text = state.displayName
@@ -1310,6 +1318,7 @@ class WalletFragment : Fragment() {
         val etPort       = dialogView.findViewById<TextInputEditText>(R.id.et_electrum_port)
         val cbTls        = dialogView.findViewById<CheckBox>(R.id.cb_electrum_tls)
         val tvTlsWarning = dialogView.findViewById<TextView>(R.id.tv_electrum_tls_warning)
+        val cbCrossCheck = dialogView.findViewById<CheckBox>(R.id.cb_electrum_cross_check)
         val btnTest      = dialogView.findViewById<MaterialButton>(R.id.btn_test_electrum_connection)
         val tvTestResult = dialogView.findViewById<TextView>(R.id.tv_electrum_test_result)
         val tvError      = dialogView.findViewById<TextView>(R.id.tv_electrum_error)
@@ -1320,6 +1329,7 @@ class WalletFragment : Fragment() {
         etHost.setText(NodePrefs.getHost(context) ?: "")
         etPort.setText(NodePrefs.getPort(context).toString())
         cbTls.isChecked = NodePrefs.isTlsEnabled(context)
+        cbCrossCheck.isChecked = NodePrefs.isCrossCheckEnabled(context)
         groupFields.visibility = if (cbEnabled.isChecked) View.VISIBLE else View.GONE
         tvTlsWarning.visibility = if (cbTls.isChecked) View.GONE else View.VISIBLE
 
@@ -1390,7 +1400,7 @@ class WalletFragment : Fragment() {
                     tvError.visibility = View.VISIBLE
                     return@setOnClickListener
                 }
-                NodePrefs.save(context, enabled = true, host = host, port = port, useTls = cbTls.isChecked)
+                NodePrefs.save(context, enabled = true, host = host, port = port, useTls = cbTls.isChecked, crossCheck = cbCrossCheck.isChecked)
             } else {
                 NodePrefs.disable(context)
             }

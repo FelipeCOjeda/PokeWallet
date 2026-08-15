@@ -26,8 +26,13 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.pokewallet.R
 import com.pokewallet.crypto.PassphraseMode
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+
+/** Tempo até limpar o clipboard sozinho depois de copiar o mnemonic —
+ *  mesma ordem de grandeza usada por gerenciadores de senha comuns. */
+private const val CLIPBOARD_CLEAR_DELAY_MS = 45_000L
 
 class SetupFragment : Fragment() {
 
@@ -172,6 +177,22 @@ class SetupFragment : Fragment() {
         }
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(clip)
+
+        // EXTRA_IS_SENSITIVE (acima) só esconde a prévia do clipboard a
+        // partir do Android 13 — não limpa nada sozinho, e em versões
+        // anteriores nem isso existe. Limpa o clipboard automaticamente
+        // depois de um tempo em QUALQUER versão, só se o conteúdo ainda
+        // for o mnemonic que a gente colocou lá (se o usuário já copiou
+        // outra coisa nesse meio-tempo, não mexe).
+        lifecycleScope.launch {
+            delay(CLIPBOARD_CLEAR_DELAY_MS)
+            val current = clipboard.primaryClip
+                ?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)?.text?.toString()
+            if (current == mnemonic) {
+                clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+            }
+        }
 
         AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
             .setTitle("⚠️  Cuidado")

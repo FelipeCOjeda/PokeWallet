@@ -183,6 +183,18 @@
                         android:textColor="@color/error_red"
                         android:visibility="gone" />
 
+                    <!-- Cross-check opcional (node Electrum → "Cruzar saldo com API
+                         pública") achou divergência — possível node malicioso escondendo
+                         fundos. Só aparece quando a opção está ligada E divergiu. -->
+                    <TextView
+                        android:id="@+id/tv_balance_cross_check_warning"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textSize="11sp"
+                        android:textColor="@color/error_red"
+                        android:visibility="gone" />
+
             </LinearLayout>
 
             <!-- Botões Receber / Enviar -->

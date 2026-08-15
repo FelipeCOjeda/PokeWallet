@@ -18,6 +18,7 @@ object NodePrefs {
     private const val KEY_HOST    = "electrum_host"
     private const val KEY_PORT    = "electrum_port"
     private const val KEY_TLS     = "electrum_tls"
+    private const val KEY_CROSS_CHECK = "electrum_cross_check"
     const val DEFAULT_PORT = 50001
 
     private fun prefs(context: Context) =
@@ -31,13 +32,20 @@ object NodePrefs {
     // dessa opção existir — ligar TLS é uma escolha explícita do usuário,
     // necessária pra qualquer node fora de uma rede local confiável.
     fun isTlsEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_TLS, false)
+    // Desligado por padrão: cruzar saldo com a API pública a cada scan
+    // significa falar com Blockstream/mempool.space mesmo com node próprio
+    // ligado — o oposto do motivo de ligar o node próprio pra começo de
+    // conversa (privacidade/independência). Fica opt-in pra quem quer essa
+    // camada extra de verificação e aceita o trade-off.
+    fun isCrossCheckEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_CROSS_CHECK, false)
 
-    fun save(context: Context, enabled: Boolean, host: String, port: Int, useTls: Boolean) {
+    fun save(context: Context, enabled: Boolean, host: String, port: Int, useTls: Boolean, crossCheck: Boolean) {
         prefs(context).edit()
             .putBoolean(KEY_ENABLED, enabled)
             .putString(KEY_HOST, host)
             .putInt(KEY_PORT, port)
             .putBoolean(KEY_TLS, useTls)
+            .putBoolean(KEY_CROSS_CHECK, crossCheck)
             .apply()
         invalidateCache()
     }

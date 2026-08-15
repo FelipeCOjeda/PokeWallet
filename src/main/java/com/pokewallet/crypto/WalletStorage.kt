@@ -276,6 +276,39 @@ object WalletStorage {
 
     fun delete(): Boolean = synchronized(lock) {
         cachedRawJson = null
-        walletFile.delete()
+        secureDelete(walletFile)
+    }
+
+    /**
+     * Sobrescreve o conteúdo do arquivo com zeros antes de apagar — File.
+     * delete() sozinho só desvincula o nome do arquivo, os bytes antigos
+     * podem continuar recuperáveis por forense de armazenamento até serem
+     * reescritos por outra coisa. NÃO é garantia absoluta em flash/eMMC
+     * (wear-leveling pode gravar a sobrescrita num bloco físico diferente
+     * do original) — mas é a mesma mitigação best-effort que qualquer
+     * wallet consciente disso aplica, e helps mais o esquema aqui porque
+     * wallet.json já é AES-256-GCM (WalletEncryption) — isso é defesa
+     * adicional pro caso do Keystore em si ser comprometido depois.
+     */
+    fun secureDelete(file: File): Boolean {
+        if (!file.exists()) return true
+        overwriteWithZeros(file)
+        return file.delete()
+    }
+
+    /** Separada de secureDelete() só pra ser testável isoladamente (sem
+     *  o delete() logo em seguida escondendo se a sobrescrita rodou). */
+    internal fun overwriteWithZeros(file: File) {
+        try {
+            val length = file.length()
+            java.io.RandomAccessFile(file, "rws").use { raf ->
+                raf.seek(0)
+                raf.write(ByteArray(length.toInt()))
+            }
+        } catch (_: Exception) {
+            // Sobrescrita é best-effort — se falhar (ex: permissão), ainda
+            // tenta apagar o arquivo normalmente em secureDelete() em vez
+            // de travar a operação de esquecer a wallet.
+        }
     }
 }

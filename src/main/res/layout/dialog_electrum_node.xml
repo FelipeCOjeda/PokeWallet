@@ -106,6 +106,25 @@
                 android:text="⚠️ Sem TLS, os dados trafegam sem criptografia — use só na sua rede local (Wi-Fi de casa). Fora da LAN, ligue TLS ou não use node próprio."
                 android:layout_marginBottom="12dp" />
 
+            <CheckBox
+                android:id="@+id/cb_electrum_cross_check"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🔍 Cruzar saldo com API pública"
+                android:textColor="@color/gb_border"
+                android:textStyle="bold"
+                android:buttonTint="@color/bitcoin_orange"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="@color/gb_border_soft"
+                android:lineSpacingExtra="2dp"
+                android:text="Depois de cada varredura, confere o saldo dos endereços já conhecidos contra Blockstream/mempool.space e avisa se o node próprio reportar menos do que a API pública — defesa extra contra node comprometido escondendo fundos. Deixa o scan mais lento e volta a falar com a API pública (o oposto do motivo de usar node próprio), por isso é opcional."
+                android:layout_marginBottom="12dp" />
+
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_test_electrum_connection"
                 style="@style/Gameboy.Button.Outline"

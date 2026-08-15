@@ -79,7 +79,7 @@ object WalletForget {
         // -----------------------------
         // Destruição consciente
         // -----------------------------
-        val deleted = walletFile.delete()
+        val deleted = WalletStorage.secureDelete(walletFile)
 
         if (!deleted) {
             println("\n❌ Falha ao remover wallet.json.")

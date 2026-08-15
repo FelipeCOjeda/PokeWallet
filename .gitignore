@@ -49,3 +49,11 @@ src/main/java/com/pokewallet/crypto/teste btc core.txt
 src/main/java/com/pokewallet/crypto/teste.bat
 src/main/java/teste999.txt
 src/main/java/com/pokewallet/crypto/Secp256k1.kt.txt
+
+# Assets de marketing soltos na raiz (não confundir com src/main/res/layout/,
+# ancorado explicitamente na raiz aqui pra não afetar o outro) — em SO
+# case-insensitive (macOS/Windows) layout/ e Layout/ colidiriam num só
+# diretório se algum dia entrassem por um `git add -A` sem querer.
+/layout/
+/Layout/
+YOUTUBE_TITULO_DESCRICAO.txt
