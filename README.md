@@ -31,9 +31,12 @@ Isso significa que:
 - Seu IP nunca precisa falar diretamente com uma API centralizada (tipo
   Blockstream/mempool.space) na hora de enviar — só na hora de consultar
   saldo/UTXOs, que é opcional de qualquer forma.
-- A identidade Nostr usada é derivada **da mesma seed BIP39** da wallet
-  (NIP-06) — não existe uma segunda chave pra guardar ou perder; restaurar a
-  wallet pelo mnemonic recria a identidade Nostr automaticamente.
+- A identidade Nostr usada em cada envio é **efêmera** — uma chave nova,
+  gerada na hora e descartada logo depois, sem nenhuma derivação fixa a
+  partir da seed. Não existe uma segunda chave pra guardar ou perder (não
+  há nada persistente pra restaurar), e nenhum observador do canal público
+  consegue ligar dois envios diferentes à mesma wallet pela identidade
+  usada pra publicar.
 - Funciona como um plano B de transmissão em cenários de rede restrita ou
   censurada, ou simplesmente pra quem prefere não expor o IP a um serviço
   centralizado no momento do envio.

@@ -7,6 +7,7 @@ import com.pokewallet.crypto.*
 import com.pokewallet.network.BlockstreamClient
 import com.pokewallet.network.FeeEstimates
 import com.pokewallet.network.RemoteUtxo
+import com.pokewallet.network.UtxoValueVerifier
 import com.pokewallet.network.WalletScanner
 import com.pokewallet.nostr.GeoRelayDirectory
 import com.pokewallet.nostr.NostrEvent
@@ -157,6 +158,9 @@ sealed class SendState {
 /** Caminho de broadcast escolhido pelo usuário na hora de enviar. */
 sealed class SendMode {
     object Internet : SendMode()
+    /** Broadcast via Blockstream/mempool.space roteado por um proxy SOCKS5
+     *  local (Orbot) — ver [TorPrefs]. Exige o Orbot instalado e rodando. */
+    object Tor : SendMode()
     object BitChat : SendMode()
 }
 
@@ -168,6 +172,21 @@ private data class NostrSendResult(val txid: String, val confirmed: Boolean, val
  * (ver /home/felipe/Bots/bitchat-broadcaster/.env — default "6g").
  */
 private const val BITCHAT_GEOHASH = "6g"
+
+/**
+ * Pubkey Nostr fixa do bitchat-broadcaster (NOSTR_PRIVATE_KEY configurada
+ * no .env dele, não é chave efêmera — ver src/broadcaster.js). Usada pra
+ * só aceitar como "tx confirmada" uma resposta assinada por ESSA
+ * identidade — sem isso, qualquer participante do canal público podia
+ * forjar uma confirmação (o txid citado nela é público, extraído do
+ * próprio `!broadcast <hex>` que a wallet acabou de publicar). Se o bot
+ * for redeployado com uma chave nova, essa constante precisa acompanhar —
+ * até lá, o pior caso é a wallet nunca reconhecer a confirmação (o envio
+ * ainda funciona, só fica marcado como "publicado, sem confirmação do
+ * relay" em vez de confirmado).
+ */
+private const val BITCHAT_BROADCASTER_PUBKEY_HEX =
+    "ad8224492887a4b66795d0a8026a201226aeae67548631586d7a83dd40bf2707"
 
 /**
  * Intervalo base do autoScanJob. Um scan típico faz ~40+ requests HTTP
@@ -969,6 +988,12 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         _sendState.value = SendState.Success(txid, confirmedByRelay = true)
                     }
+                    is SendMode.Tor -> {
+                        val txid = withContext(Dispatchers.IO) {
+                            executeSendViaTor(destination, amountSats, sweep, feeRateSatPerVbyte, manualUtxoKeys)
+                        }
+                        _sendState.value = SendState.Success(txid, confirmedByRelay = true)
+                    }
                     is SendMode.BitChat -> {
                         val result = withContext(Dispatchers.IO) {
                             executeSendViaNostr(destination, amountSats, sweep, feeRateSatPerVbyte, manualUtxoKeys)
@@ -1140,6 +1165,36 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Igual a [executeSend], mas o broadcast sai roteado pelo proxy SOCKS5
+     * do Orbot (ver [TorPrefs]) — sempre via Blockstream/mempool.space
+     * (não pelo node próprio configurado em [NodePrefs], que é um caminho
+     * separado). Se o Orbot não estiver rodando na porta configurada, a
+     * conexão falha com erro claro (recusada) em vez de vazar pra fora do
+     * Tor silenciosamente — não há fallback automático pra internet direta.
+     */
+    private suspend fun executeSendViaTor(
+        destination: String, amountSats: Long?, sweep: Boolean, feeRateSatPerVbyte: Double,
+        manualUtxoKeys: Set<String>? = null
+    ): String {
+        val prepared = buildSignedTx(destination, amountSats, sweep, feeRateSatPerVbyte, manualUtxoKeys)
+        try {
+            val proxy = TorPrefs.proxy(getApplication())
+            return try {
+                BlockstreamClient.broadcastViaProxy(prepared.rawTxHex, prepared.network, proxy)
+            } catch (e: Exception) {
+                throw RuntimeException(
+                    "Não foi possível transmitir via Tor — confira se o Orbot está instalado, " +
+                        "rodando, e com o proxy SOCKS habilitado em " +
+                        "${TorPrefs.getHost(getApplication())}:${TorPrefs.getPort(getApplication())}. (${e.message})",
+                    e
+                )
+            }
+        } finally {
+            prepared.seed.fill(0)
+        }
+    }
+
     private suspend fun executeSendViaNostr(
         destination: String,
         amountSats: Long?,
@@ -1151,7 +1206,13 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
         _sendState.value = SendState.PublishingToRelays
 
-        val (nostrPrivKey, nostrPubKey) = NostrKeys.deriveFromSeed(prepared.seed)
+        // Identidade EFÊMERA (não derivada da seed) — o bot correlaciona a
+        // resposta pelo txid no conteúdo, não pela pubkey do publicador,
+        // então usar uma chave nova a cada envio não quebra o protocolo, e
+        // fecha o vetor de qualquer observador do canal público conseguir
+        // clusterizar todos os envios Nostr desta wallet pela mesma pubkey
+        // (o que uma identidade fixa via NIP-06 permitiria).
+        val (nostrPrivKey, nostrPubKey) = NostrKeys.random()
         prepared.seed.fill(0)
         val relays = GeoRelayDirectory.closestRelays(BITCHAT_GEOHASH)
         val event = try {
@@ -1169,11 +1230,12 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         _sendState.value = SendState.AwaitingRelayConfirmation(prepared.txid)
 
         val result = NostrRelayClient.publishAndAwaitReply(
-            event        = event,
-            relays       = relays,
-            ourPubkeyHex = event.pubkey,
-            geohash      = BITCHAT_GEOHASH,
-            timeoutMs    = 18_000L
+            event                  = event,
+            relays                 = relays,
+            ourPubkeyHex           = event.pubkey,
+            geohash                = BITCHAT_GEOHASH,
+            timeoutMs              = 18_000L,
+            expectedReplyPubkeyHex = BITCHAT_BROADCASTER_PUBKEY_HEX
         ) { content -> content.contains(prepared.txid, ignoreCase = true) }
 
         if (!result.published) {
@@ -1302,6 +1364,15 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             selected.forEach { selectedRefs[it] = Unit }
             candidates.filterIndexed { i, _ -> selectedRefs.containsKey(coinUtxos[i]) }
         }
+
+        // Confere CADA UTXO que vai ser gasto contra a transação anterior
+        // real (não só o que o provedor de saldo/UTXOs reportou) — fecha o
+        // vetor de um servidor malicioso/MITM mentir o valor pra inflar a
+        // fee às custas do usuário. Ver UtxoValueVerifier. Roda pros dois
+        // caminhos de envio (local signing e air-gapped) porque os dois
+        // passam por resolveSpend().
+        val dataSource = NodePrefs.dataSource(getApplication())
+        chosen.forEach { UtxoValueVerifier.verify(dataSource, network, it.utxo) }
 
         val totalInputSats = chosen.sumOf { it.utxo.valueSats }
         val destSpk = addressToScriptPubKey(destination, network)
@@ -1642,6 +1713,16 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 val broadcastTxid = withContext(Dispatchers.IO) {
                     when (mode) {
                         is SendMode.Internet -> NodePrefs.dataSource(getApplication()).broadcast(rawTxHex, network)
+                        is SendMode.Tor      -> try {
+                            BlockstreamClient.broadcastViaProxy(rawTxHex, network, TorPrefs.proxy(getApplication()))
+                        } catch (e: Exception) {
+                            throw RuntimeException(
+                                "Não foi possível transmitir via Tor — confira se o Orbot está instalado, " +
+                                    "rodando, e com o proxy SOCKS habilitado em " +
+                                    "${TorPrefs.getHost(getApplication())}:${TorPrefs.getPort(getApplication())}. (${e.message})",
+                                e
+                            )
+                        }
                         is SendMode.BitChat  -> broadcastAirGappedViaNostr(rawTxHex, expectedTxid)
                     }
                 }
@@ -1672,11 +1753,12 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         val result = NostrRelayClient.publishAndAwaitReply(
-            event        = event,
-            relays       = relays,
-            ourPubkeyHex = event.pubkey,
-            geohash      = BITCHAT_GEOHASH,
-            timeoutMs    = 18_000L
+            event                  = event,
+            relays                 = relays,
+            ourPubkeyHex           = event.pubkey,
+            geohash                = BITCHAT_GEOHASH,
+            timeoutMs              = 18_000L,
+            expectedReplyPubkeyHex = BITCHAT_BROADCASTER_PUBKEY_HEX
         ) { content -> content.contains(expectedTxid, ignoreCase = true) }
 
         if (!result.published) {
@@ -1832,6 +1914,12 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     private fun humanizeError(e: Exception): String {
         val msg = e.message ?: "Erro desconhecido"
         return when {
+            // Checa ANTES do catch-all genérico de "connect"/"network" logo
+            // abaixo — a mensagem de executeSendViaTor() já é específica
+            // (diz pra checar o Orbot) e o texto da exceção subjacente
+            // (ex: "Connection refused") contém "connect" como substring,
+            // o que cairia no genérico e esconderia a orientação certa.
+            msg.contains("Orbot", ignoreCase = true) -> msg
             msg.contains("RIPEMD160", ignoreCase = true) ->
                 "Erro ao inicializar criptografia. Reinicie o app e tente novamente."
             msg.contains("429") || msg.contains("Too Many Requests", ignoreCase = true) ->

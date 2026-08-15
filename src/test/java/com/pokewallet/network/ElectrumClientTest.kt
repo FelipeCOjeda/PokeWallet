@@ -138,6 +138,36 @@ class ElectrumClientTest {
         }
     }
 
+    @Test
+    fun `getRawTx devolve o hex bruto do result (verbose=false)`() {
+        val server = ServerSocket(0)
+        val port = server.localPort
+        Thread {
+            try {
+                val socket = server.accept()
+                val reader = socket.getInputStream().bufferedReader()
+                val writer = socket.getOutputStream().bufferedWriter()
+                val line = reader.readLine()
+                val request = JSONObject(line)
+                assertEquals("blockchain.transaction.get", request.getString("method"))
+                assertEquals("aabbcc", request.getJSONArray("params").getString(0))
+                writer.write("""{"id":${request.getInt("id")},"result":"0200000001deadbeef"}""")
+                writer.write("\n")
+                writer.flush()
+            } catch (_: Exception) {
+            }
+        }.apply { isDaemon = true }.start()
+
+        try {
+            val client = ElectrumClient("127.0.0.1", port)
+            val rawHex = client.getRawTx("aabbcc", Network.MAINNET)
+            assertEquals("0200000001deadbeef", rawHex)
+            client.close()
+        } finally {
+            server.close()
+        }
+    }
+
     @Test(expected = RuntimeException::class)
     fun `conexao recusada (node fora do ar) vira excecao clara`() {
         // Porta livre garantida: sobe e fecha um ServerSocket na hora, sem

@@ -459,6 +459,60 @@ fun parseSignedTxidHex(rawTxHex: String): String {
     return UnsignedTransaction(version, inputs, outputs, lockTime).txid()
 }
 
+/** Resultado de [parseRawTx]: txid recalculado a partir dos bytes recebidos + as saídas da tx. */
+data class ParsedRawTx(val txid: String, val outputs: List<TxOut>)
+
+/**
+ * Parseia uma transação bruta em hex (formato legado OU com marker/flag/
+ * witness SegWit, BIP144 — detecta automaticamente qual é) e recalcula o
+ * txid a partir dos bytes recebidos (double-sha256 da serialização sem
+ * witness). Usado por [com.pokewallet.network.UtxoValueVerifier] pra
+ * conferir que uma transação anterior reportada por um provedor de dados é
+ * genuína antes de confiar no valor de um dos seus outputs: como o txid é
+ * o hash da própria tx, uma resposta forjada com um valor diferente do
+ * real produziria um txid diferente do esperado, o que só é possível de
+ * disfarçar quebrando SHA-256.
+ */
+fun parseRawTx(rawTxHex: String): ParsedRawTx {
+    val raw = rawTxHex.hexToBytes()
+    val buf = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+
+    val version = buf.int
+
+    val markerPos = buf.position()
+    val marker = buf.get()
+    val hasWitness: Boolean
+    if (marker == 0x00.toByte()) {
+        val flag = buf.get()
+        require(flag == 0x01.toByte()) { "Flag SegWit inválida (esperado 0x01)" }
+        hasWitness = true
+    } else {
+        buf.position(markerPos) // não era marker/flag — volta e lê como varint normal
+        hasWitness = false
+    }
+
+    val inputCount = readVarInt(buf)
+    val inputs = (0 until inputCount.toInt()).map { TxIn.parse(buf) }
+
+    val outputCount = readVarInt(buf)
+    val outputs = (0 until outputCount.toInt()).map { TxOut.parse(buf) }
+
+    if (hasWitness) {
+        repeat(inputCount.toInt()) {
+            val witnessCount = readVarInt(buf)
+            repeat(witnessCount.toInt()) {
+                val len = readVarInt(buf)
+                buf.position(buf.position() + len.toInt())
+            }
+        }
+    }
+
+    val lockTime = buf.int.toLong() and 0xffffffffL
+
+    val txid = UnsignedTransaction(version, inputs, outputs, lockTime).txid()
+    return ParsedRawTx(txid, outputs)
+}
+
 /** key||value de um par PSBT (BIP174: varint(len)+bytes pra cada um). */
 internal fun writeKeyValue(out: ByteArrayOutputStream, key: ByteArray, value: ByteArray) {
     out.write(varInt(key.size.toLong()))

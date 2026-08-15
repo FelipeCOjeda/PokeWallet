@@ -112,6 +112,8 @@ class WalletFragment : Fragment() {
         val btnThemeDark     = view.findViewById<MaterialButton>(R.id.btn_theme_dark)
         val tvElectrumStatus = view.findViewById<TextView>(R.id.tv_electrum_status)
         val btnConfigureElectrum = view.findViewById<MaterialButton>(R.id.btn_configure_electrum)
+        val tvTorStatus      = view.findViewById<TextView>(R.id.tv_tor_status)
+        val btnConfigureTor  = view.findViewById<MaterialButton>(R.id.btn_configure_tor)
         val cardError        = view.findViewById<View>(R.id.card_error)
         val tvError          = view.findViewById<TextView>(R.id.tv_error)
         val bottomNav        = view.findViewById<BottomNavigationView>(R.id.bottom_nav)
@@ -142,6 +144,7 @@ class WalletFragment : Fragment() {
                 R.id.nav_bag -> {
                     cardBag.visibility = View.VISIBLE
                     tvElectrumStatus.text = NodePrefs.statusLabel(requireContext())
+                    tvTorStatus.text = TorPrefs.statusLabel(requireContext())
                     true
                 }
                 else -> false
@@ -183,6 +186,9 @@ class WalletFragment : Fragment() {
 
         tvElectrumStatus.text = NodePrefs.statusLabel(requireContext())
         btnConfigureElectrum.setOnClickListener { showElectrumNodeDialog(tvElectrumStatus) }
+
+        tvTorStatus.text = TorPrefs.statusLabel(requireContext())
+        btnConfigureTor.setOnClickListener { showTorConfigDialog(tvTorStatus) }
 
         val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
@@ -834,12 +840,16 @@ class WalletFragment : Fragment() {
         var currentSendMode: SendMode = SendMode.Internet
         rgSendMode.setOnCheckedChangeListener { _, checkedId ->
             currentSendMode = when (checkedId) {
+                R.id.rb_mode_tor     -> SendMode.Tor
                 R.id.rb_mode_bitchat -> SendMode.BitChat
                 else                 -> SendMode.Internet
             }
             tvModeExplainer.setText(
-                if (currentSendMode is SendMode.BitChat) R.string.send_mode_bitchat_explainer
-                else R.string.send_mode_internet_explainer
+                when (currentSendMode) {
+                    is SendMode.Tor     -> R.string.send_mode_tor_explainer
+                    is SendMode.BitChat -> R.string.send_mode_bitchat_explainer
+                    else                -> R.string.send_mode_internet_explainer
+                }
             )
         }
 
@@ -1191,12 +1201,16 @@ class WalletFragment : Fragment() {
         var broadcastMode: SendMode = SendMode.Internet
         rgMode.setOnCheckedChangeListener { _, checkedId ->
             broadcastMode = when (checkedId) {
+                R.id.rb_airgapped_mode_tor     -> SendMode.Tor
                 R.id.rb_airgapped_mode_bitchat -> SendMode.BitChat
                 else                            -> SendMode.Internet
             }
             tvModeExplainer.setText(
-                if (broadcastMode is SendMode.BitChat) R.string.send_mode_bitchat_explainer
-                else R.string.send_mode_internet_explainer
+                when (broadcastMode) {
+                    is SendMode.Tor     -> R.string.send_mode_tor_explainer
+                    is SendMode.BitChat -> R.string.send_mode_bitchat_explainer
+                    else                -> R.string.send_mode_internet_explainer
+                }
             )
         }
 
@@ -1294,6 +1308,8 @@ class WalletFragment : Fragment() {
         val groupFields  = dialogView.findViewById<View>(R.id.group_electrum_fields)
         val etHost       = dialogView.findViewById<TextInputEditText>(R.id.et_electrum_host)
         val etPort       = dialogView.findViewById<TextInputEditText>(R.id.et_electrum_port)
+        val cbTls        = dialogView.findViewById<CheckBox>(R.id.cb_electrum_tls)
+        val tvTlsWarning = dialogView.findViewById<TextView>(R.id.tv_electrum_tls_warning)
         val btnTest      = dialogView.findViewById<MaterialButton>(R.id.btn_test_electrum_connection)
         val tvTestResult = dialogView.findViewById<TextView>(R.id.tv_electrum_test_result)
         val tvError      = dialogView.findViewById<TextView>(R.id.tv_electrum_error)
@@ -1303,11 +1319,17 @@ class WalletFragment : Fragment() {
         cbEnabled.isChecked  = NodePrefs.isEnabled(context)
         etHost.setText(NodePrefs.getHost(context) ?: "")
         etPort.setText(NodePrefs.getPort(context).toString())
+        cbTls.isChecked = NodePrefs.isTlsEnabled(context)
         groupFields.visibility = if (cbEnabled.isChecked) View.VISIBLE else View.GONE
+        tvTlsWarning.visibility = if (cbTls.isChecked) View.GONE else View.VISIBLE
 
         cbEnabled.setOnCheckedChangeListener { _, checked ->
             groupFields.visibility = if (checked) View.VISIBLE else View.GONE
             tvError.visibility = View.GONE
+        }
+
+        cbTls.setOnCheckedChangeListener { _, checked ->
+            tvTlsWarning.visibility = if (checked) View.GONE else View.VISIBLE
         }
 
         val dialog = AlertDialog.Builder(context, R.style.Theme_PokéWallet_Dialog)
@@ -1368,11 +1390,97 @@ class WalletFragment : Fragment() {
                     tvError.visibility = View.VISIBLE
                     return@setOnClickListener
                 }
-                NodePrefs.save(context, enabled = true, host = host, port = port)
+                NodePrefs.save(context, enabled = true, host = host, port = port, useTls = cbTls.isChecked)
             } else {
                 NodePrefs.disable(context)
             }
             statusView.text = NodePrefs.statusLabel(context)
+            dialog.dismiss()
+        }
+
+        dialog.show()
+        dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+    }
+
+    /** Configura o host:porta do proxy SOCKS do Orbot (Mochila, seção
+     *  TOR) — usado só quando o usuário escolhe o modo "Tor" na hora de
+     *  enviar; não tem toggle de habilitar/desabilitar porque não é um
+     *  modo padrão, só uma opção no diálogo de envio. */
+    private fun showTorConfigDialog(statusView: TextView) {
+        val context      = requireContext()
+        val dialogView   = layoutInflater.inflate(R.layout.dialog_tor_config, null)
+        val etHost       = dialogView.findViewById<TextInputEditText>(R.id.et_tor_host)
+        val etPort       = dialogView.findViewById<TextInputEditText>(R.id.et_tor_port)
+        val btnTest      = dialogView.findViewById<MaterialButton>(R.id.btn_test_tor_connection)
+        val tvTestResult = dialogView.findViewById<TextView>(R.id.tv_tor_test_result)
+        val tvError      = dialogView.findViewById<TextView>(R.id.tv_tor_error)
+        val btnCancel    = dialogView.findViewById<MaterialButton>(R.id.btn_cancel_tor_config)
+        val btnConfirm   = dialogView.findViewById<MaterialButton>(R.id.btn_confirm_tor_config)
+
+        etHost.setText(TorPrefs.getHost(context))
+        etPort.setText(TorPrefs.getPort(context).toString())
+
+        val dialog = AlertDialog.Builder(context, R.style.Theme_PokéWallet_Dialog)
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+
+        btnTest.setOnClickListener {
+            val host = etHost.text?.toString()?.trim() ?: ""
+            val port = etPort.text?.toString()?.trim()?.toIntOrNull()
+            if (host.isEmpty() || port == null) {
+                tvTestResult.text          = "❌ Preencha host e porta antes de testar."
+                tvTestResult.setTextColor(ContextCompat.getColor(context, R.color.error_red))
+                tvTestResult.visibility    = View.VISIBLE
+                return@setOnClickListener
+            }
+            tvTestResult.text       = "🔄 Testando…"
+            tvTestResult.setTextColor(ContextCompat.getColor(context, R.color.gb_border_soft))
+            tvTestResult.visibility = View.VISIBLE
+            btnTest.isEnabled       = false
+
+            lifecycleScope.launch {
+                // Só confirma que ALGO está escutando nessa porta (TCP connect
+                // simples) — não valida que é de fato um proxy SOCKS5/Orbot
+                // funcional, mesma limitação do "Testar conexão" do Electrum.
+                val reachable = withContext(Dispatchers.IO) {
+                    try {
+                        java.net.Socket().use { socket ->
+                            socket.connect(java.net.InetSocketAddress(host, port), 4000)
+                        }
+                        true
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+                btnTest.isEnabled = true
+                if (reachable) {
+                    tvTestResult.text = "✅ Alguma coisa está escutando em $host:$port"
+                    tvTestResult.setTextColor(ContextCompat.getColor(context, R.color.green_status))
+                } else {
+                    tvTestResult.text = "❌ Não conseguiu conectar em $host:$port — confira se o Orbot está instalado e rodando, com o proxy SOCKS habilitado."
+                    tvTestResult.setTextColor(ContextCompat.getColor(context, R.color.error_red))
+                }
+            }
+        }
+
+        btnConfirm.setOnClickListener {
+            val host = etHost.text?.toString()?.trim() ?: ""
+            val port = etPort.text?.toString()?.trim()?.toIntOrNull()
+            if (host.isEmpty()) {
+                tvError.text       = "Informe o host do proxy."
+                tvError.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            if (port == null || port !in 1..65535) {
+                tvError.text       = "Porta inválida — informe um número de 1 a 65535."
+                tvError.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            TorPrefs.save(context, host = host, port = port)
+            statusView.text = TorPrefs.statusLabel(context)
             dialog.dismiss()
         }
 

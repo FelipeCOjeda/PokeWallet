@@ -4,6 +4,7 @@ import com.pokewallet.crypto.Network
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.net.Proxy
 import java.net.URL
 
 object BlockstreamClient : ChainDataSource {
@@ -89,6 +90,19 @@ object BlockstreamClient : ChainDataSource {
     override fun broadcast(rawHex: String, network: Network): String =
         postWithFallback(network, "/tx", rawHex).trim()
 
+    /**
+     * Igual a [broadcast], mas roteando a conexão por um proxy SOCKS (Tor,
+     * via Orbot local) — o IP que fala com Blockstream/mempool.space na
+     * hora de transmitir a tx é o do relay Tor de saída, não o do
+     * aparelho. Só o passo de broadcast; consultas de saldo/UTXO (scan)
+     * continuam diretas, fora do escopo desta opção.
+     */
+    fun broadcastViaProxy(rawHex: String, network: Network, proxy: Proxy): String =
+        postWithFallback(network, "/tx", rawHex, proxy).trim()
+
+    override fun getRawTx(txid: String, network: Network): String =
+        getWithFallback(network, "/tx/$txid/hex").trim()
+
     fun getAddressTxs(address: String, network: Network): List<JSONObject> {
         return try {
             val arr = JSONArray(getWithFallback(network, "/address/$address/txs"))
@@ -152,11 +166,11 @@ object BlockstreamClient : ChainDataSource {
         error("Todos os provedores falharam — ${failures.joinToString(" | ")}")
     }
 
-    private fun postWithFallback(network: Network, path: String, body: String): String {
+    private fun postWithFallback(network: Network, path: String, body: String, proxy: Proxy? = null): String {
         val failures = mutableListOf<String>()
         for (base in baseUrls(network)) {
             try {
-                return post(base + path, body)
+                return post(base + path, body, proxy)
             } catch (e: Exception) {
                 failures += "${hostOf(base)}: ${e.message}"
             }
@@ -203,8 +217,8 @@ object BlockstreamClient : ChainDataSource {
         return conn.inputStream.bufferedReader().use { it.readText() }
     }
 
-    private fun post(url: String, body: String): String {
-        val conn = URL(url).openConnection() as HttpURLConnection
+    private fun post(url: String, body: String, proxy: Proxy? = null): String {
+        val conn = (if (proxy != null) URL(url).openConnection(proxy) else URL(url).openConnection()) as HttpURLConnection
         conn.connectTimeout    = 10_000
         conn.readTimeout       = 30_000
         conn.requestMethod     = "POST"

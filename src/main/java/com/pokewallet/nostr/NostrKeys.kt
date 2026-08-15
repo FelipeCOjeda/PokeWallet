@@ -13,6 +13,12 @@ import org.bouncycastle.crypto.ec.CustomNamedCurves
  * mnemonic também restaura essa identidade automaticamente.
  *
  * Path: m/44'/1237'/0'/0/0
+ *
+ * NÃO é o que o envio via BitChat/Nostr usa hoje — esse caminho usa
+ * [random] (identidade efêmera por envio), justamente pra não deixar uma
+ * pubkey fixa e correlacionável entre todos os envios da wallet num canal
+ * público. [deriveFromSeed] fica disponível como utilitário NIP-06 puro
+ * pra outro uso futuro (ex.: provar posse da wallet, DMs).
  */
 object NostrKeys {
 

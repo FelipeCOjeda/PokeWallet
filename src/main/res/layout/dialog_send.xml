@@ -265,6 +265,14 @@
                     android:checked="true" />
 
                 <RadioButton
+                    android:id="@+id/rb_mode_tor"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/send_mode_tor"
+                    android:buttonTint="@color/bitcoin_orange"
+                    android:textColor="@color/gb_border" />
+
+                <RadioButton
                     android:id="@+id/rb_mode_bitchat"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

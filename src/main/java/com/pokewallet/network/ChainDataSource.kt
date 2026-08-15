@@ -14,4 +14,13 @@ interface ChainDataSource {
     fun getUtxos(address: String, network: Network): List<RemoteUtxo>
     fun getFeeEstimates(network: Network): FeeEstimates
     fun broadcast(rawHex: String, network: Network): String
+
+    /**
+     * Transação bruta (hex) identificada por [txid] — usada por
+     * [UtxoValueVerifier] pra conferir, ANTES de assinar, que o valor de um
+     * UTXO reportado por este provedor bate com a transação real que o
+     * criou (o provedor não consegue forjar isso sem quebrar SHA-256, já
+     * que o txid é o hash da própria tx).
+     */
+    fun getRawTx(txid: String, network: Network): String
 }

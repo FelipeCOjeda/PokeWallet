@@ -17,6 +17,7 @@ object NodePrefs {
     private const val KEY_ENABLED = "electrum_enabled"
     private const val KEY_HOST    = "electrum_host"
     private const val KEY_PORT    = "electrum_port"
+    private const val KEY_TLS     = "electrum_tls"
     const val DEFAULT_PORT = 50001
 
     private fun prefs(context: Context) =
@@ -25,12 +26,18 @@ object NodePrefs {
     fun isEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_ENABLED, false)
     fun getHost(context: Context): String? = prefs(context).getString(KEY_HOST, null)
     fun getPort(context: Context): Int = prefs(context).getInt(KEY_PORT, DEFAULT_PORT)
+    // Desligado por padrão: preserva o comportamento de quem já configurou
+    // um node LAN sem TLS (ex.: Floresta doméstico, sem certificado) antes
+    // dessa opção existir — ligar TLS é uma escolha explícita do usuário,
+    // necessária pra qualquer node fora de uma rede local confiável.
+    fun isTlsEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_TLS, false)
 
-    fun save(context: Context, enabled: Boolean, host: String, port: Int) {
+    fun save(context: Context, enabled: Boolean, host: String, port: Int, useTls: Boolean) {
         prefs(context).edit()
             .putBoolean(KEY_ENABLED, enabled)
             .putString(KEY_HOST, host)
             .putInt(KEY_PORT, port)
+            .putBoolean(KEY_TLS, useTls)
             .apply()
         invalidateCache()
     }
@@ -52,21 +59,24 @@ object NodePrefs {
     @Volatile private var cachedClient: ElectrumClient? = null
     @Volatile private var cachedHost: String? = null
     @Volatile private var cachedPort: Int = -1
+    @Volatile private var cachedTls: Boolean = false
 
     @Synchronized
     fun dataSource(context: Context): ChainDataSource {
         if (!isEnabled(context)) return BlockstreamClient
         val host = getHost(context)?.takeIf { it.isNotBlank() } ?: return BlockstreamClient
         val port = getPort(context)
+        val tls  = isTlsEnabled(context)
 
         val cached = cachedClient
-        if (cached != null && cachedHost == host && cachedPort == port) return cached
+        if (cached != null && cachedHost == host && cachedPort == port && cachedTls == tls) return cached
 
         cached?.close()
-        val client = ElectrumClient(host, port)
+        val client = ElectrumClient(host, port, useTls = tls)
         cachedClient = client
         cachedHost = host
         cachedPort = port
+        cachedTls = tls
         return client
     }
 
@@ -76,5 +86,6 @@ object NodePrefs {
         cachedClient = null
         cachedHost = null
         cachedPort = -1
+        cachedTls = false
     }
 }

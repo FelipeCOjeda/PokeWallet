@@ -11,6 +11,7 @@ import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.InetSocketAddress
 import java.net.Socket
+import javax.net.ssl.SSLSocketFactory
 
 /**
  * Cliente do protocolo Electrum (JSON-RPC 2.0 sobre TCP, uma mensagem por
@@ -23,12 +24,21 @@ import java.net.Socket
  * dezenas de chamadas sequenciais (uma por endereço), reusar a conexão
  * evita reconectar a cada request (mesmo raciocínio do keep-alive HTTP em
  * [BlockstreamClient]).
+ *
+ * [useTls]: OPCIONAL, desligado por padrão — um node só de LAN (ex.:
+ * Floresta doméstico, sem certificado) continua funcionando exatamente
+ * como antes. Quando ligado, o handshake TLS usa o trust store padrão do
+ * Android (valida a cadeia de certificado normalmente, sem pinning nem
+ * TrustManager customizado) — liga isso pra qualquer node fora da LAN
+ * confiável, senão a conexão TCP pura é interceptável/adulterável por
+ * qualquer um no caminho (Wi-Fi público, ISP, etc).
  */
 class ElectrumClient(
     private val host: String,
     private val port: Int,
     private val connectTimeoutMs: Int = 10_000,
-    private val readTimeoutMs: Int = 15_000
+    private val readTimeoutMs: Int = 15_000,
+    private val useTls: Boolean = false
 ) : ChainDataSource {
 
     private var socket: Socket? = null
@@ -48,8 +58,19 @@ class ElectrumClient(
         val s = socket
         if (s != null && s.isConnected && !s.isClosed) return
 
-        val newSocket = Socket()
-        newSocket.connect(InetSocketAddress(host, port), connectTimeoutMs)
+        val plainSocket = Socket()
+        plainSocket.connect(InetSocketAddress(host, port), connectTimeoutMs)
+
+        val newSocket: Socket = if (useTls) {
+            val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+            // autoClose=true: fechar o SSLSocket já fecha o plainSocket
+            // por baixo, não precisa fechar os dois separadamente.
+            val sslSocket = factory.createSocket(plainSocket, host, port, true) as javax.net.ssl.SSLSocket
+            sslSocket.startHandshake()
+            sslSocket
+        } else {
+            plainSocket
+        }
         newSocket.soTimeout = readTimeoutMs
         socket = newSocket
         writer = BufferedWriter(OutputStreamWriter(newSocket.getOutputStream(), Charsets.UTF_8))
@@ -166,4 +187,9 @@ class ElectrumClient(
 
     override fun broadcast(rawHex: String, network: Network): String =
         call("blockchain.transaction.broadcast", JSONArray(listOf(rawHex))).getString("result")
+
+    // verbose=false (padrão do método) — servidor devolve a tx bruta em hex
+    // direto como "result", em vez de um objeto decodificado.
+    override fun getRawTx(txid: String, network: Network): String =
+        call("blockchain.transaction.get", JSONArray(listOf(txid))).getString("result")
 }

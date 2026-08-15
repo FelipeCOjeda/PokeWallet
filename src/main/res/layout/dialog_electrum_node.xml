@@ -86,6 +86,26 @@
 
             </com.google.android.material.textfield.TextInputLayout>
 
+            <CheckBox
+                android:id="@+id/cb_electrum_tls"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🔒 Usar TLS/SSL"
+                android:textColor="@color/gb_border"
+                android:textStyle="bold"
+                android:buttonTint="@color/bitcoin_orange"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:id="@+id/tv_electrum_tls_warning"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="@color/error_red"
+                android:lineSpacingExtra="2dp"
+                android:text="⚠️ Sem TLS, os dados trafegam sem criptografia — use só na sua rede local (Wi-Fi de casa). Fora da LAN, ligue TLS ou não use node próprio."
+                android:layout_marginBottom="12dp" />
+
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_test_electrum_connection"
                 style="@style/Gameboy.Button.Outline"

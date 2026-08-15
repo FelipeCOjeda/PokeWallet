@@ -23,6 +23,23 @@ object GeoRelayDirectory {
     private const val BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz"
 
     /**
+     * Hostname válido (rótulos alfanuméricos/hífen separados por ponto,
+     * pelo menos um ponto) — barra qualquer linha do CSV remoto cujo campo
+     * `host` não seja um domínio plausível antes de virar `wss://$host`
+     * (ex.: contendo `/`, `:`, espaço, `@`, ou qualquer outro caractere que
+     * não faria sentido num hostname). NÃO é uma defesa contra o
+     * repositório de terceiro listar um domínio malicioso só que
+     * sintaticamente válido — isso é uma limitação de confiança inerente a
+     * usar uma lista dinâmica mantida pela comunidade BitChat (é assim que
+     * o protocolo de geo-relay funciona: publicador e assinante precisam
+     * concordar no mesmo conjunto de relays pra se enxergarem). O que essa
+     * validação fecha é entrada malformada/injeção de caractere inesperado
+     * virando literalmente parte da URL do WebSocket.
+     */
+    private val VALID_HOST_REGEX =
+        Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$")
+
+    /**
      * Relays fixos usados pelo bitchat-broadcaster quando o cálculo
      * dinâmico dele falha no boot (config.js FALLBACK_RELAYS, copiado
      * literalmente). Incluídos aqui na união com o cálculo dinâmico
@@ -72,7 +89,8 @@ object GeoRelayDirectory {
         return r * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
-    private fun parseDirectoryCsv(text: String): List<Entry> =
+    /** internal (não private) só pra ser testável isoladamente sem rede. */
+    internal fun parseDirectoryCsv(text: String): List<Entry> =
         text.split("\n")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
@@ -83,7 +101,7 @@ object GeoRelayDirectory {
                 val host = parts[0]
                 val lat = parts[1].toDoubleOrNull()
                 val lon = parts[2].toDoubleOrNull()
-                if (host.isEmpty() || lat == null || lon == null) null else Entry(host, lat, lon)
+                if (lat == null || lon == null || !VALID_HOST_REGEX.matches(host)) null else Entry(host, lat, lon)
             }
 
     /**
