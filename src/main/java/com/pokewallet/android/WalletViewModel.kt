@@ -404,17 +404,24 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 resetPerWalletCaches()
                 val wallet = withContext(Dispatchers.IO) { WalletStorage.load() }
                 val displayName = WalletRegistry.displayNameOrFallback(getApplication(), wallet.fingerprint)
+                // Memória local do último saldo conhecido (ver doc em
+                // WalletData.cachedBalanceSats) — pinta a tela com isso
+                // IMEDIATO em vez de null/loading, sem esperar a resposta
+                // de rede. doScan() (chamado logo abaixo por startAutoScan())
+                // continua rodando por trás pra atualizar; isScanning=false
+                // aqui só reflete que essa pintura inicial não é, ela
+                // mesma, um scan em andamento.
                 _walletState.value = WalletState.Loaded(
                     fingerprint  = wallet.fingerprint,
                     walletName   = wallet.walletName,
                     displayName  = displayName,
                     network      = wallet.network,
-                    balanceSats  = null,
-                    pendingSats  = null,
-                    utxoCount    = null,
+                    balanceSats  = wallet.cachedBalanceSats,
+                    pendingSats  = wallet.cachedPendingSats?.takeIf { it != 0L },
+                    utxoCount    = wallet.cachedUtxoCount,
                     isScanning   = false,
                     scanStatus   = null,
-                    lastScanTime = null,
+                    lastScanTime = wallet.cachedScanTimeMs?.let { Date(it) },
                     isWatchOnly  = wallet.isWatchOnly
                 )
                 startAutoScan()
@@ -582,6 +589,11 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
 
+            val confirmedSats = result.addressesWithFunds.sumOf { it.stats.confirmedSats }
+            val pendingSats   = result.addressesWithFunds.sumOf { it.stats.pendingSats }
+            val utxoCount     = result.addressesWithFunds.sumOf { it.utxos.size }
+            val scanTimeMs    = System.currentTimeMillis()
+
             withContext(Dispatchers.IO) {
                 wallet.nextExternalIndex = result.nextExternalIndex
                 wallet.nextInternalIndex = result.nextInternalIndex
@@ -592,14 +604,18 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 wallet.activeExternalIndices = result.allWithActivity.filter { it.chain == 0 }.mapTo(mutableSetOf()) { it.index }
                 wallet.activeInternalIndices = result.allWithActivity.filter { it.chain == 1 }.mapTo(mutableSetOf()) { it.index }
                 wallet.needsFullRescan = false
+                // Memória local do saldo (ver doc em WalletData) — próxima
+                // vez que essa carteira abrir, loadWalletAndStartScan() pinta
+                // a tela com isso na hora, sem esperar o scan de rede.
+                wallet.cachedBalanceSats = confirmedSats
+                wallet.cachedPendingSats = pendingSats
+                wallet.cachedUtxoCount   = utxoCount
+                wallet.cachedScanTimeMs  = scanTimeMs
                 WalletStorage.save(wallet)
             }
 
             lastScanResult = result
             lastScanResultAtMs = System.currentTimeMillis()
-
-            val confirmedSats = result.addressesWithFunds.sumOf { it.stats.confirmedSats }
-            val pendingSats   = result.addressesWithFunds.sumOf { it.stats.pendingSats }
 
             if (pendingSats > 0L && lastKnownPendingSats == 0L) {
                 _pendingTxEvent.emit(pendingSats)
@@ -609,7 +625,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             _walletState.value = current.copy(
                 balanceSats   = confirmedSats,
                 pendingSats   = if (pendingSats != 0L) pendingSats else null,
-                utxoCount     = result.addressesWithFunds.sumOf { it.utxos.size },
+                utxoCount     = utxoCount,
                 isScanning    = false,
                 scanStatus    = null,
                 lastScanTime  = Date(),
@@ -1312,24 +1328,17 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         return result
     }
 
-    /** Um UTXO candidato a ser gasto, com o endereço (chain/index) que o controla. */
-    private class SpendCandidate(val addr: com.pokewallet.network.WalletScanner.ScannedAddress, val utxo: RemoteUtxo)
-
-    private class ResolvedSpend(
-        val chosen: List<SpendCandidate>,
-        val destSpk: ByteArray,
-        val sendAmount: Long,
-        val changeValue: Long?
-    )
-
     /**
-     * Escaneia (ou reusa o cache), filtra congelados e resolve QUAIS UTXOs
+     * Escaneia (ou reusa o cache) e verifica valor contra a tx anterior
+     * real (rede, ver UtxoValueVerifier) — a decisão em si de QUAIS UTXOs
      * entram na tx (manual > sweep > CoinSelector automático) + quanto vai
-     * pro destino/troco — compartilhado entre o caminho de assinatura local
-     * (buildSignedTx, carteira com seed) e o de montar PSBT pra assinatura
-     * air-gapped (buildUnsignedPsbtForWatchOnly, carteira watch-only). Não
-     * deriva NENHUMA chave (nem pública nem privada) — isso é responsabilidade
-     * de cada chamador, já que os dois caminhos derivam de formas diferentes
+     * pro destino/troco é pura e vive em [SpendResolver] (achado ALTO
+     * 11/12 da auditoria: essa lógica não tinha teste nenhum). Compartilhado
+     * entre o caminho de assinatura local (buildSignedTx, carteira com
+     * seed) e o de montar PSBT pra assinatura air-gapped
+     * (buildUnsignedPsbtForWatchOnly, carteira watch-only). Não deriva
+     * NENHUMA chave (nem pública nem privada) — isso é responsabilidade de
+     * cada chamador, já que os dois caminhos derivam de formas diferentes
      * (seed vs. xpub).
      */
     private suspend fun resolveSpend(
@@ -1342,64 +1351,19 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         sweep: Boolean,
         feeRateSatPerVbyte: Double,
         manualUtxoKeys: Set<String>?
-    ): ResolvedSpend {
+    ): SpendResolver.Resolved {
         val scanResult = scanForSend(xpub, network, spendType)
         if (scanResult.totalSats == 0L) error("Saldo zero — nada para enviar.")
 
         // UTXO congelado (tela de UTXOs) nunca entra num envio, automático ou
         // manual — congelar promete proteção na UI, então tem que valer pra
         // qualquer caminho que chega aqui.
-        val candidates = scanResult.addressesWithFunds.flatMap { addr ->
-            addr.utxos
-                .filterNot { wallet.frozenUtxoKeys.contains("${it.txid}:${it.vout}") }
-                .map { SpendCandidate(addr, it) }
-        }
+        val candidates = SpendResolver.candidatesFrom(scanResult.addressesWithFunds, wallet.frozenUtxoKeys)
         if (candidates.isEmpty()) {
             error("Todos os UTXOs disponíveis estão congelados — descongele pelo menos um pra enviar.")
         }
 
-        // Sweep continua gastando TUDO que não estiver congelado (é a
-        // definição de sweep). Envio parcial seleciona de verdade via
-        // CoinSelector em vez de sempre consolidar a carteira inteira.
-        val chosen: List<SpendCandidate> = if (manualUtxoKeys != null) {
-            // Seleção manual (Fase B3): usa EXATAMENTE os UTXOs escolhidos na
-            // tela de UTXOs — nunca completa com outros automaticamente, isso
-            // anularia o propósito de escolher UTXOs específicos (privacidade/
-            // organização). Sweep + seleção manual = varre só os selecionados.
-            val byKey = candidates.associateBy { "${it.utxo.txid}:${it.utxo.vout}" }
-            val missing = manualUtxoKeys.filterNot { byKey.containsKey(it) }
-            if (missing.isNotEmpty()) {
-                error("Um ou mais UTXOs selecionados não estão mais disponíveis (gasto ou congelado nesse meio-tempo) — atualize a seleção e tente de novo.")
-            }
-            val manualChosen = manualUtxoKeys.map { byKey.getValue(it) }
-            if (!sweep) {
-                val targetValue = amountSats ?: error("Valor não informado")
-                val totalSelected = manualChosen.sumOf { it.utxo.valueSats }
-                val estimatedFee = FeeEstimator.estimateFee(manualChosen.size, 2, spendType, feeRateSatPerVbyte)
-                require(totalSelected >= targetValue + estimatedFee) {
-                    "Os UTXOs selecionados ($totalSelected sat) não cobrem o valor + taxa estimada (~${targetValue + estimatedFee} sat) — selecione mais UTXOs."
-                }
-            }
-            manualChosen
-        } else if (sweep) {
-            candidates
-        } else {
-            val targetValue = amountSats ?: error("Valor não informado")
-            val coinUtxos = candidates.map { c ->
-                Utxo(
-                    txid         = hexToBytes(c.utxo.txid),
-                    vout         = c.utxo.vout,
-                    value        = c.utxo.valueSats,
-                    scriptPubKey = byteArrayOf(),
-                    chain        = c.addr.chain,
-                    index        = c.addr.index
-                )
-            }
-            val (selected, _) = CoinSelector.select(coinUtxos, targetValue, feeRateSatPerVbyte, spendType)
-            val selectedRefs = java.util.IdentityHashMap<Utxo, Unit>()
-            selected.forEach { selectedRefs[it] = Unit }
-            candidates.filterIndexed { i, _ -> selectedRefs.containsKey(coinUtxos[i]) }
-        }
+        val chosen = SpendResolver.chooseUtxos(candidates, amountSats, sweep, manualUtxoKeys, feeRateSatPerVbyte, spendType)
 
         // Confere CADA UTXO que vai ser gasto contra a transação anterior
         // real (não só o que o provedor de saldo/UTXOs reportou) — fecha o
@@ -1410,19 +1374,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val dataSource = NodePrefs.dataSource(getApplication())
         chosen.forEach { UtxoValueVerifier.verify(dataSource, network, it.utxo) }
 
-        val totalInputSats = chosen.sumOf { it.utxo.valueSats }
-        val destSpk = addressToScriptPubKey(destination, network)
-
-        val plan = ChangePlanner.plan(
-            totalInputSats     = totalInputSats,
-            requestedAmount    = amountSats,
-            sweep              = sweep,
-            inputCount         = chosen.size,
-            feeRateSatPerVbyte = feeRateSatPerVbyte,
-            spendType          = spendType
-        )
-
-        return ResolvedSpend(chosen, destSpk, plan.sendAmount, plan.changeValue)
+        return SpendResolver.resolve(chosen, destination, network, amountSats, sweep, feeRateSatPerVbyte, spendType)
     }
 
     private suspend fun buildSignedTx(
@@ -1452,131 +1404,23 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
         val resolved = resolveSpend(wallet, xpub, network, spendType, destination, amountSats, sweep, feeRateSatPerVbyte, manualUtxoKeys)
 
-        data class SpendableUtxo(
-            val txidLE: ByteArray, val vout: Int, val valueSats: Long,
-            val scriptPubKey: ByteArray, val privateKey: ByteArray, val pubKey: ByteArray
-        )
-
-        // Deriva a chave uma vez por endereço (chain,index) mesmo que ele
-        // tenha múltiplos UTXOs escolhidos — evita derivação repetida.
-        val keyCache = mutableMapOf<Pair<Int, Int>, Triple<ByteArray, ByteArray, ByteArray>>()
-        val spendable = mutableListOf<SpendableUtxo>()
-        for (c in resolved.chosen) {
-            val keyId = c.addr.chain to c.addr.index
-            val (privKey, pubKey, spk) = keyCache.getOrPut(keyId) {
-                val hdKey = when (spendType) {
-                    SpendType.BIP84 -> KeyDerivation.bip84(seed, coin = network.coinType, account = 0,
-                        change = c.addr.chain, address = c.addr.index)
-                    SpendType.BIP86 -> KeyDerivation.bip86(seed, coin = network.coinType, account = 0,
-                        change = c.addr.chain, address = c.addr.index)
-                }
-                val pk  = hdKey.privateKey
-                val pub = Secp256k1.publicKeyFromPrivate(pk)
-                val script = when (spendType) {
-                    SpendType.BIP84 -> byteArrayOf(0x00, 0x14) + Hashes.hash160(pub)
-                    SpendType.BIP86 -> {
-                        val xOnly = Secp256k1.xOnlyPublicKeyFromPrivate(pk)
-                        byteArrayOf(0x51, 0x20) + Secp256k1.taprootOutputKeyFromInternalXOnly(xOnly)
-                    }
-                }
-                Triple(pk, pub, script)
-            }
-            spendable += SpendableUtxo(
-                txidLE       = hexToBytes(c.utxo.txid).reversedArray(),
-                vout         = c.utxo.vout,
-                valueSats    = c.utxo.valueSats,
-                scriptPubKey = spk,
-                privateKey   = privKey,
-                pubKey       = pubKey
-            )
-        }
+        val spendable = TxAssembler.deriveSpendableInputs(resolved.chosen, seed, network, spendType)
 
         val txOutputs: List<TxOut> = if (resolved.changeValue != null) {
             // Reserva atômica (load+incrementa+persiste numa seção crítica só) —
             // evita que dois envios concorrentes derivem o mesmo índice de troco.
             val changeIndex = WalletStorage.reserveNextInternalIndex()
-            val changeHdKey = when (spendType) {
-                SpendType.BIP84 -> KeyDerivation.bip84(seed, coin = network.coinType, account = 0,
-                    change = 1, address = changeIndex)
-                SpendType.BIP86 -> KeyDerivation.bip86(seed, coin = network.coinType, account = 0,
-                    change = 1, address = changeIndex)
+            val (changePrivKey, _, changeSpk) = TxAssembler.deriveKeyAndScript(seed, network, spendType, 1, changeIndex)
+            try {
+                listOf(TxOut(resolved.sendAmount, resolved.destSpk), TxOut(resolved.changeValue, changeSpk))
+            } finally {
+                changePrivKey.fill(0)
             }
-            val changePubKey = Secp256k1.publicKeyFromPrivate(changeHdKey.privateKey)
-            val changeSpk = when (spendType) {
-                SpendType.BIP84 -> byteArrayOf(0x00, 0x14) + Hashes.hash160(changePubKey)
-                SpendType.BIP86 -> byteArrayOf(0x51, 0x20) + Secp256k1.taprootOutputKeyFromInternalXOnly(
-                    Secp256k1.xOnlyPublicKeyFromPrivate(changeHdKey.privateKey))
-            }
-            changeHdKey.privateKey.fill(0)
-
-            listOf(TxOut(resolved.sendAmount, resolved.destSpk), TxOut(resolved.changeValue, changeSpk))
         } else {
             listOf(TxOut(resolved.sendAmount, resolved.destSpk))
         }
 
-        val txInputs   = spendable.map { s ->
-            TxIn(prevTxId = s.txidLE, prevIndex = s.vout, scriptSig = byteArrayOf(), sequence = 0xFFFFFFFFL)
-        }
-        val unsignedTx = UnsignedTransaction(version = 2, inputs = txInputs, outputs = txOutputs, lockTime = 0L)
-
-        val (rawTxBytes, txid) = when (spendType) {
-
-            SpendType.BIP84 -> {
-                val psbt = Psbt(
-                    unsignedTx = unsignedTx,
-                    inputs     = MutableList(txInputs.size) { PsbtInput() },
-                    outputs    = MutableList(txOutputs.size) { PsbtOutput() }
-                )
-
-                spendable.forEachIndexed { i, s ->
-                    val sig = SegwitSigner.sign(
-                        unsignedTx   = unsignedTx,
-                        inputIndex   = i,
-                        utxoValue    = s.valueSats,
-                        scriptPubKey = s.scriptPubKey,
-                        privateKey   = s.privateKey
-                    )
-                    psbt.inputs[i].witnessUtxo = TxOut(s.valueSats, s.scriptPubKey)
-                    psbt.inputs[i].partialSignatures[s.pubKey.toHex()] = sig
-                }
-                spendable.forEach { it.privateKey.fill(0) }
-
-                Pair(psbt.finalize(), psbt.txid())
-            }
-
-            SpendType.BIP86 -> {
-                val psbt = PsbtTaproot(
-                    unsignedTx = unsignedTx,
-                    inputs     = MutableList(txInputs.size) { TaprootPsbtInput() },
-                    outputs    = MutableList(txOutputs.size) { PsbtOutput() }
-                )
-
-                val utxoTxOuts = spendable.map { TxOut(it.valueSats, it.scriptPubKey) }
-
-                spendable.forEachIndexed { i, s ->
-                    psbt.inputs[i].witnessUtxo = TxOut(s.valueSats, s.scriptPubKey)
-
-                    val sighash = TaprootSighashCalculator.calculate(
-                        tx       = unsignedTx,
-                        inputIndex = i,
-                        utxos    = utxoTxOuts
-                    )
-                    val tweakedPrivKey = Secp256k1.taprootTweakPrivateKey(s.privateKey)
-                    try {
-                        psbt.inputs[i].tapKeySig = SchnorrSigner.sign(
-                            msg32     = sighash,
-                            privKey32 = tweakedPrivKey
-                        )
-                    } finally {
-                        tweakedPrivKey.fill(0)
-                    }
-                }
-                spendable.forEach { it.privateKey.fill(0) }
-
-                Pair(psbt.finalize(), unsignedTx.txid())
-            }
-        }
-
+        val (rawTxBytes, txid) = TxAssembler.signAndFinalize(spendable, txOutputs, spendType)
         val rawTxHex = rawTxBytes.joinToString("") { "%02x".format(it) }
 
         PreparedTx(rawTxHex = rawTxHex, txid = txid, seed = seed, network = network)
@@ -1632,100 +1476,26 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         // caso é só um pseudo-ID interno (diretório/registro), nunca deve
         // ir dentro do PSBT (o lado assinante rejeitaria por não bater).
         val masterFingerprint = if (wallet.hasVerifiedFingerprint) wallet.fingerprint.hexToBytes() else ByteArray(4)
-        val purpose = spendType.bipPurpose()
 
         val resolved = resolveSpend(wallet, xpub, network, spendType, destination, amountSats, sweep, feeRateSatPerVbyte, manualUtxoKeys)
 
-        fun deriveKeyAndScript(chain: Int, index: Int): Pair<ByteArray, ByteArray> {
-            val accountKey = com.pokewallet.network.XpubAddressDeriver.decodeXpub(xpub)
-            val chainKey   = com.pokewallet.network.XpubAddressDeriver.derivePublicChild(accountKey, chain)
-            val indexKey   = com.pokewallet.network.XpubAddressDeriver.derivePublicChild(chainKey, index)
-            val spk = when (spendType) {
-                SpendType.BIP84 -> byteArrayOf(0x00, 0x14) + Hashes.hash160(indexKey.pubKey)
-                SpendType.BIP86 -> {
-                    val xOnly = indexKey.pubKey.copyOfRange(1, 33)
-                    byteArrayOf(0x51, 0x20) + Secp256k1.taprootOutputKeyFromInternalXOnly(xOnly)
-                }
-            }
-            return indexKey.pubKey to spk
-        }
+        // Reserva atômica — mesma proteção de buildSignedTx() contra dois
+        // envios concorrentes derivarem o mesmo índice de troco.
+        val changeIndex = if (resolved.changeValue != null) WalletStorage.reserveNextInternalIndex() else null
 
-        fun derivationPath(chain: Int, index: Int) = listOf(
-            KeyDerivation.hardened(purpose), KeyDerivation.hardened(network.coinType), KeyDerivation.hardened(0), chain, index
+        val built = PsbtAssembler.build(
+            chosen            = resolved.chosen,
+            destSpk           = resolved.destSpk,
+            sendAmount        = resolved.sendAmount,
+            changeValue       = resolved.changeValue,
+            changeIndex       = changeIndex,
+            xpub              = xpub,
+            network           = network,
+            spendType         = spendType,
+            masterFingerprint = masterFingerprint
         )
 
-        val txInputs = mutableListOf<TxIn>()
-        // pubKey, scriptPubKey, (chain, index) — um por input, na mesma ordem de resolved.chosen
-        val inputMeta = mutableListOf<Triple<ByteArray, ByteArray, Pair<Int, Int>>>()
-        for (c in resolved.chosen) {
-            txInputs += TxIn(
-                prevTxId = hexToBytes(c.utxo.txid).reversedArray(),
-                prevIndex = c.utxo.vout,
-                scriptSig = byteArrayOf(),
-                sequence = 0xFFFFFFFFL
-            )
-            val (pubKey, spk) = deriveKeyAndScript(c.addr.chain, c.addr.index)
-            inputMeta += Triple(pubKey, spk, c.addr.chain to c.addr.index)
-        }
-
-        var changePubKey: ByteArray? = null
-        var changeChainIndex: Pair<Int, Int>? = null
-        val txOutputs: List<TxOut> = if (resolved.changeValue != null) {
-            // Reserva atômica — mesma proteção de buildSignedTx() contra dois
-            // envios concorrentes derivarem o mesmo índice de troco.
-            val changeIndex = WalletStorage.reserveNextInternalIndex()
-            val (pubKey, spk) = deriveKeyAndScript(1, changeIndex)
-            changePubKey = pubKey
-            changeChainIndex = 1 to changeIndex
-            listOf(TxOut(resolved.sendAmount, resolved.destSpk), TxOut(resolved.changeValue, spk))
-        } else {
-            listOf(TxOut(resolved.sendAmount, resolved.destSpk))
-        }
-
-        val unsignedTx = UnsignedTransaction(version = 2, inputs = txInputs, outputs = txOutputs, lockTime = 0L)
-        val expectedTxid = unsignedTx.txid()
-
-        val psbtBase64 = when (spendType) {
-            SpendType.BIP84 -> {
-                val psbt = Psbt(
-                    unsignedTx = unsignedTx,
-                    inputs     = MutableList(txInputs.size) { PsbtInput() },
-                    outputs    = MutableList(txOutputs.size) { PsbtOutput() }
-                )
-                inputMeta.forEachIndexed { i, (pubKey, spk, chainIndex) ->
-                    psbt.inputs[i].witnessUtxo = TxOut(resolved.chosen[i].utxo.valueSats, spk)
-                    psbt.inputs[i].bip32Derivations[pubKey.toHex()] =
-                        Bip32Derivation(masterFingerprint, derivationPath(chainIndex.first, chainIndex.second))
-                }
-                if (changePubKey != null && changeChainIndex != null) {
-                    psbt.outputs[1].bip32Derivations[changePubKey.toHex()] =
-                        Bip32Derivation(masterFingerprint, derivationPath(changeChainIndex.first, changeChainIndex.second))
-                }
-                psbt.serializeBase64()
-            }
-            SpendType.BIP86 -> {
-                val psbt = PsbtTaproot(
-                    unsignedTx = unsignedTx,
-                    inputs     = MutableList(txInputs.size) { TaprootPsbtInput() },
-                    outputs    = MutableList(txOutputs.size) { PsbtOutput() }
-                )
-                inputMeta.forEachIndexed { i, (pubKey, spk, chainIndex) ->
-                    val xOnly = pubKey.copyOfRange(1, 33)
-                    psbt.inputs[i].witnessUtxo = TxOut(resolved.chosen[i].utxo.valueSats, spk)
-                    psbt.inputs[i].tapInternalKey = xOnly
-                    psbt.inputs[i].tapBip32Derivation =
-                        TapBip32Derivation(emptyList(), masterFingerprint, derivationPath(chainIndex.first, chainIndex.second))
-                }
-                if (changePubKey != null && changeChainIndex != null) {
-                    val xOnly = changePubKey.copyOfRange(1, 33)
-                    psbt.outputs[1].tapBip32Derivations[xOnly.toHex()] =
-                        TapBip32Derivation(emptyList(), masterFingerprint, derivationPath(changeChainIndex.first, changeChainIndex.second))
-                }
-                psbt.serializeBase64()
-            }
-        }
-
-        AirGappedPsbt(psbtBase64 = psbtBase64, expectedTxid = expectedTxid, network = network)
+        AirGappedPsbt(psbtBase64 = built.psbtBase64, expectedTxid = built.expectedTxid, network = network)
         }
     }
 
@@ -1819,8 +1589,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                         val seed = SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
                         try {
                             when (wallet.spendType) {
-                                SpendType.BIP84 -> signSegwitPsbt(psbtBase64, seed, wallet, network)
-                                SpendType.BIP86 -> signTaprootPsbt(psbtBase64, seed, wallet, network)
+                                SpendType.BIP84 -> AirGappedPsbtSigner.signSegwit(psbtBase64, seed, wallet, network)
+                                SpendType.BIP86 -> AirGappedPsbtSigner.signTaproot(psbtBase64, seed, wallet, network)
                             }
                         } finally {
                             seed.fill(0)
@@ -1835,117 +1605,6 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resetAirGappedSignState() { _airGappedSignState.value = AirGappedSignState.Idle }
-
-    /** (rawTxHex, txid) do PSBT SegWit v0 assinado com a chave certa por input. */
-    private fun signSegwitPsbt(psbtBase64: String, seed: ByteArray, wallet: WalletData, network: Network): Pair<String, String> {
-        val psbt = try {
-            Psbt.parseBase64(psbtBase64)
-        } catch (e: Exception) {
-            error("PSBT inválido ou corrompido: ${e.message}")
-        }
-        require(psbt.unsignedTx.inputs.isNotEmpty()) { "PSBT sem inputs" }
-
-        psbt.inputs.forEachIndexed { i, input ->
-            val utxo = input.witnessUtxo ?: error("Input $i sem witness_utxo — PSBT incompleto")
-            val (pubKeyHex, deriv) = input.bip32Derivations.entries.firstOrNull()
-                ?: error("Input $i sem informação de derivação — não sei qual chave usar pra assinar")
-            // Fingerprint zerado = "desconhecido" (PSBT veio de watch-only importada
-            // só por xpub pura, sem o fingerprint mestre real) — nesse caso não dá
-            // pra conferir aqui, a checagem de segurança real é a de script mais
-            // abaixo (recalcula a partir da chave derivada e confere contra o UTXO).
-            if (!deriv.masterFingerprint.all { it == 0.toByte() }) {
-                require(deriv.masterFingerprint.toHex() == wallet.fingerprint) {
-                    "Esse PSBT foi montado por outra carteira (fingerprint ${deriv.masterFingerprint.toHex()} ≠ ${wallet.fingerprint} desta)."
-                }
-            }
-            require(deriv.path.size == 5) { "Caminho de derivação inesperado no input $i" }
-            val chain = deriv.path[3]
-            val index = deriv.path[4]
-
-            val hdKey = KeyDerivation.bip84(seed, coin = network.coinType, account = 0, change = chain, address = index)
-            try {
-                val pubKey = Secp256k1.publicKeyFromPrivate(hdKey.privateKey)
-                require(pubKey.toHex() == pubKeyHex) {
-                    "Pubkey derivada não bate com a do PSBT no input $i — dado corrompido ou adulterado, assinatura recusada."
-                }
-                // Recalcula o scriptPubKey a partir da CHAVE DERIVADA LOCALMENTE (não confia
-                // cegamente no scriptPubKey que veio no PSBT) — se não bater, o PSBT está
-                // pedindo pra assinar algo que não corresponde à chave que ele mesmo declarou.
-                val expectedSpk = byteArrayOf(0x00, 0x14) + Hashes.hash160(pubKey)
-                require(expectedSpk.contentEquals(utxo.scriptPubKey)) {
-                    "scriptPubKey do input $i não bate com o esperado pra essa chave — assinatura recusada."
-                }
-
-                val sig = SegwitSigner.sign(
-                    unsignedTx   = psbt.unsignedTx,
-                    inputIndex   = i,
-                    utxoValue    = utxo.value,
-                    scriptPubKey = utxo.scriptPubKey,
-                    privateKey   = hdKey.privateKey
-                )
-                psbt.inputs[i].partialSignatures[pubKeyHex] = sig
-            } finally {
-                hdKey.privateKey.fill(0)
-            }
-        }
-
-        val rawTxBytes = psbt.finalize()
-        return rawTxBytes.joinToString("") { "%02x".format(it) } to psbt.txid()
-    }
-
-    /** (rawTxHex, txid) do PSBT Taproot assinado com a chave certa por input. */
-    private fun signTaprootPsbt(psbtBase64: String, seed: ByteArray, wallet: WalletData, network: Network): Pair<String, String> {
-        val psbt = try {
-            PsbtTaproot.parseBase64(psbtBase64)
-        } catch (e: Exception) {
-            error("PSBT inválido ou corrompido: ${e.message}")
-        }
-        require(psbt.unsignedTx.inputs.isNotEmpty()) { "PSBT sem inputs" }
-
-        val allUtxos = psbt.inputs.mapIndexed { i, input ->
-            input.witnessUtxo ?: error("Input $i sem witness_utxo — necessário em todos os inputs pro cálculo do sighash Taproot")
-        }
-
-        psbt.inputs.forEachIndexed { i, input ->
-            val utxo = allUtxos[i]
-            val deriv = input.tapBip32Derivation
-                ?: error("Input $i sem informação de derivação — não sei qual chave usar pra assinar")
-            // Fingerprint zerado = "desconhecido" (PSBT veio de watch-only importada
-            // só por xpub pura, sem o fingerprint mestre real) — nesse caso não dá
-            // pra conferir aqui, a checagem de segurança real é a de script mais
-            // abaixo (recalcula a partir da chave derivada e confere contra o UTXO).
-            if (!deriv.masterFingerprint.all { it == 0.toByte() }) {
-                require(deriv.masterFingerprint.toHex() == wallet.fingerprint) {
-                    "Esse PSBT foi montado por outra carteira (fingerprint ${deriv.masterFingerprint.toHex()} ≠ ${wallet.fingerprint} desta)."
-                }
-            }
-            require(deriv.path.size == 5) { "Caminho de derivação inesperado no input $i" }
-            val chain = deriv.path[3]
-            val index = deriv.path[4]
-
-            val hdKey = KeyDerivation.bip86(seed, coin = network.coinType, account = 0, change = chain, address = index)
-            val tweakedPrivKey = Secp256k1.taprootTweakPrivateKey(hdKey.privateKey)
-            try {
-                val xOnly = Secp256k1.xOnlyPublicKeyFromPrivate(hdKey.privateKey)
-                require(input.tapInternalKey != null && xOnly.contentEquals(input.tapInternalKey)) {
-                    "Internal key derivada não bate com a do PSBT no input $i — dado corrompido ou adulterado, assinatura recusada."
-                }
-                val expectedSpk = byteArrayOf(0x51, 0x20) + Secp256k1.taprootOutputKeyFromInternalXOnly(xOnly)
-                require(expectedSpk.contentEquals(utxo.scriptPubKey)) {
-                    "scriptPubKey do input $i não bate com o esperado pra essa chave — assinatura recusada."
-                }
-
-                val sighash = TaprootSighashCalculator.calculate(tx = psbt.unsignedTx, inputIndex = i, utxos = allUtxos)
-                psbt.inputs[i].tapKeySig = SchnorrSigner.sign(msg32 = sighash, privKey32 = tweakedPrivKey)
-            } finally {
-                tweakedPrivKey.fill(0)
-                hdKey.privateKey.fill(0)
-            }
-        }
-
-        val rawTxBytes = psbt.finalize()
-        return rawTxBytes.joinToString("") { "%02x".format(it) } to psbt.unsignedTx.txid()
-    }
 
     private fun humanizeError(e: Exception): String {
         val msg = e.message ?: "Erro desconhecido"

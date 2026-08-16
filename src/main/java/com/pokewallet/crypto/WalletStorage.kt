@@ -199,6 +199,13 @@ object WalletStorage {
             activeExternalIndices = intSet("activeExternalIndices"),
             activeInternalIndices = intSet("activeInternalIndices"),
             needsFullRescan    = json.optBoolean("needsFullRescan", false),
+            // isNull() (não has()) porque save() grava JSONObject.NULL
+            // explícito pra "ainda sem saldo conhecido" em vez de omitir a
+            // chave — has() voltaria true e getLong() lançaria em cima do NULL.
+            cachedBalanceSats  = if (!json.isNull("cachedBalanceSats")) json.getLong("cachedBalanceSats") else null,
+            cachedPendingSats  = if (!json.isNull("cachedPendingSats")) json.getLong("cachedPendingSats") else null,
+            cachedUtxoCount    = if (!json.isNull("cachedUtxoCount")) json.getInt("cachedUtxoCount") else null,
+            cachedScanTimeMs   = if (!json.isNull("cachedScanTimeMs")) json.getLong("cachedScanTimeMs") else null,
             frozenUtxoKeys     = frozenKeys,
             raw                = json
         )
@@ -212,6 +219,10 @@ object WalletStorage {
         wallet.raw.put("activeExternalIndices", org.json.JSONArray(wallet.activeExternalIndices))
         wallet.raw.put("activeInternalIndices", org.json.JSONArray(wallet.activeInternalIndices))
         wallet.raw.put("needsFullRescan", wallet.needsFullRescan)
+        wallet.raw.put("cachedBalanceSats", wallet.cachedBalanceSats ?: JSONObject.NULL)
+        wallet.raw.put("cachedPendingSats", wallet.cachedPendingSats ?: JSONObject.NULL)
+        wallet.raw.put("cachedUtxoCount", wallet.cachedUtxoCount ?: JSONObject.NULL)
+        wallet.raw.put("cachedScanTimeMs", wallet.cachedScanTimeMs ?: JSONObject.NULL)
         val serialized = wallet.raw.toString(2)
         walletFile.writeBytes(WalletEncryption.encrypt(serialized))
         cachedRawJson = serialized

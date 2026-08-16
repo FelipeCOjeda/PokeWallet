@@ -14,6 +14,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -71,6 +72,42 @@ class WalletFragment : Fragment() {
             setOrientationLocked(false)
         }
         qrScanLauncher.launch(options)
+    }
+
+    /** Lê um arquivo .psbt escolhido pelo usuário (Storage Access
+     *  Framework — sem permissão de storage nenhuma) e devolve o base64
+     *  pronto pra viewModel.signAirGappedPsbt(). Aceita tanto o formato
+     *  BIP174 binário "de verdade" (magic bytes 0x70 0x73 0x62 0x74 0xff —
+     *  o que apps como BlueWallet/Sparrow exportam por padrão) QUANTO um
+     *  arquivo de texto já em base64 — detecta automaticamente pelos
+     *  primeiros bytes. null se não conseguiu ler ou o usuário cancelou. */
+    private var psbtFileImportCallback: ((String?) -> Unit)? = null
+
+    private val psbtFileImportLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val callback = psbtFileImportCallback
+        psbtFileImportCallback = null
+        if (uri == null) {
+            callback?.invoke(null)
+            return@registerForActivityResult
+        }
+        val content = try {
+            val bytes = requireContext().contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            val psbtMagic = byteArrayOf(0x70, 0x73, 0x62, 0x74, 0xff.toByte())
+            when {
+                bytes == null -> null
+                bytes.size >= 5 && bytes.copyOfRange(0, 5).contentEquals(psbtMagic) ->
+                    android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                else -> String(bytes, Charsets.UTF_8).trim()
+            }
+        } catch (_: Exception) {
+            null
+        }
+        callback?.invoke(content)
+    }
+
+    private fun launchPsbtFileImport(onResult: (String?) -> Unit) {
+        psbtFileImportCallback = onResult
+        psbtFileImportLauncher.launch("*/*")
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
@@ -347,12 +384,64 @@ class WalletFragment : Fragment() {
         dialog.show()
     }
 
-    /** Lado signer do fluxo air-gapped (Fase C4): escaneia o QR do PSBT
-     *  montado pela carteira watch-only e assina com a seed local. */
+    /** Lado signer do fluxo air-gapped (Fase C4): traz o PSBT não-assinado
+     *  montado pela carteira watch-only (deste app ou de qualquer outra
+     *  compatível, ex.: BlueWallet/Sparrow) por QR, arquivo .psbt ou texto
+     *  colado, e assina com a seed local. */
     private fun startSignAirGappedPsbtFlow() {
-        launchQrScan("Aponte para o QR do PSBT (tela \"Assine no outro aparelho\")") { scanned ->
-            viewModel.signAirGappedPsbt(scanned)
+        val dialogView = layoutInflater.inflate(R.layout.dialog_sign_airgapped_psbt_input, null)
+        val etPsbt        = dialogView.findViewById<TextInputEditText>(R.id.et_psbt_to_sign)
+        val tvError       = dialogView.findViewById<TextView>(R.id.tv_sign_psbt_input_error)
+        val btnScan       = dialogView.findViewById<MaterialButton>(R.id.btn_scan_psbt_to_sign)
+        val btnImportFile = dialogView.findViewById<MaterialButton>(R.id.btn_import_psbt_file)
+        val btnConfirm    = dialogView.findViewById<MaterialButton>(R.id.btn_confirm_psbt_to_sign)
+        val btnCancel     = dialogView.findViewById<MaterialButton>(R.id.btn_cancel_sign_psbt_input)
+
+        val dialog = AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
+            .setView(dialogView)
+            .create()
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+
+        btnScan.setOnClickListener {
+            dialog.dismiss()
+            launchQrScan("Aponte para o QR do PSBT (tela \"Assine no outro aparelho\")") { scanned ->
+                signAirGappedPsbtAndObserve(scanned)
+            }
         }
+
+        btnImportFile.setOnClickListener {
+            launchPsbtFileImport { content ->
+                if (content == null) {
+                    tvError.text = "Não consegui ler o arquivo — confira se é um .psbt válido."
+                    tvError.visibility = View.VISIBLE
+                } else {
+                    dialog.dismiss()
+                    signAirGappedPsbtAndObserve(content)
+                }
+            }
+        }
+
+        btnConfirm.setOnClickListener {
+            val text = etPsbt.text?.toString()?.trim().orEmpty()
+            if (text.isEmpty()) {
+                tvError.text = "Cole o texto do PSBT antes de confirmar."
+                tvError.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            tvError.visibility = View.GONE
+            dialog.dismiss()
+            signAirGappedPsbtAndObserve(text)
+        }
+
+        dialog.show()
+    }
+
+    /** Chama viewModel.signAirGappedPsbt() e observa o resultado — mesmo
+     *  fluxo independente de o PSBT ter vindo por QR, arquivo ou texto
+     *  colado (startSignAirGappedPsbtFlow()). */
+    private fun signAirGappedPsbtAndObserve(psbtBase64: String) {
+        viewModel.signAirGappedPsbt(psbtBase64)
 
         // Cancela um coletor anterior antes de abrir outro — sem isso, toques
         // repetidos no botão empilhariam vários coletores no mesmo StateFlow

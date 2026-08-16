@@ -1,0 +1,143 @@
+package com.pokewallet.crypto
+
+/**
+ * Deriva chaves e monta/assina a transação final no caminho de assinatura
+ * LOCAL (carteira com seed neste aparelho) — extraído de
+ * WalletViewModel.buildSignedTx() (achado ALTO 11/12 da auditoria: God
+ * Object sem teste cobrindo o código que efetivamente move fundos). Puro:
+ * seed + UTXOs já resolvidos entram, tx assinada sai — nenhuma dependência
+ * de Android, WalletStorage ou rede.
+ */
+object TxAssembler {
+
+    data class SpendableInput(
+        val txidLE: ByteArray,
+        val vout: Int,
+        val valueSats: Long,
+        val scriptPubKey: ByteArray,
+        val privateKey: ByteArray,
+        val pubKey: ByteArray
+    )
+
+    /** privKey, pubKey, scriptPubKey pro endereço (chain,index) — mesmo
+     *  formato de script que [deriveSpendableInputs]/troco usam, conforme
+     *  o tipo de carteira (SegWit v0 ou Taproot). */
+    fun deriveKeyAndScript(seed: ByteArray, network: Network, spendType: SpendType, chain: Int, index: Int): Triple<ByteArray, ByteArray, ByteArray> {
+        val hdKey = when (spendType) {
+            SpendType.BIP84 -> KeyDerivation.bip84(seed, coin = network.coinType, account = 0, change = chain, address = index)
+            SpendType.BIP86 -> KeyDerivation.bip86(seed, coin = network.coinType, account = 0, change = chain, address = index)
+        }
+        val pk  = hdKey.privateKey
+        val pub = Secp256k1.publicKeyFromPrivate(pk)
+        val script = when (spendType) {
+            SpendType.BIP84 -> byteArrayOf(0x00, 0x14) + Hashes.hash160(pub)
+            SpendType.BIP86 -> {
+                val xOnly = Secp256k1.xOnlyPublicKeyFromPrivate(pk)
+                byteArrayOf(0x51, 0x20) + Secp256k1.taprootOutputKeyFromInternalXOnly(xOnly)
+            }
+        }
+        return Triple(pk, pub, script)
+    }
+
+    /** Deriva a chave de gasto de cada UTXO escolhido — uma vez por
+     *  endereço (chain,index) mesmo que ele tenha múltiplos UTXOs, evitando
+     *  derivação repetida. */
+    fun deriveSpendableInputs(
+        chosen: List<SpendResolver.Candidate>,
+        seed: ByteArray,
+        network: Network,
+        spendType: SpendType
+    ): List<SpendableInput> {
+        val keyCache = mutableMapOf<Pair<Int, Int>, Triple<ByteArray, ByteArray, ByteArray>>()
+        return chosen.map { c ->
+            val (privKey, pubKey, spk) = keyCache.getOrPut(c.chain to c.index) {
+                deriveKeyAndScript(seed, network, spendType, c.chain, c.index)
+            }
+            SpendableInput(
+                txidLE       = c.utxo.txid.hexToBytes().reversedArray(),
+                vout         = c.utxo.vout,
+                valueSats    = c.utxo.valueSats,
+                scriptPubKey = spk,
+                privateKey   = privKey,
+                pubKey       = pubKey
+            )
+        }
+    }
+
+    /**
+     * Monta e assina a tx final a partir dos inputs já derivados
+     * ([deriveSpendableInputs]) e dos outputs (destino [+troco]) — mesma
+     * lógica pros dois tipos de endereço suportados (BIP84 SegWit v0 via
+     * PSBT normal + partial signature; BIP86 Taproot via PsbtTaproot +
+     * sighash dedicado). Zera as privkeys de [spendable] antes de retornar.
+     * Retorna (rawTxBytes, txid).
+     */
+    fun signAndFinalize(
+        spendable: List<SpendableInput>,
+        outputs: List<TxOut>,
+        spendType: SpendType
+    ): Pair<ByteArray, String> {
+        val txInputs = spendable.map { s ->
+            TxIn(prevTxId = s.txidLE, prevIndex = s.vout, scriptSig = byteArrayOf(), sequence = 0xFFFFFFFFL)
+        }
+        val unsignedTx = UnsignedTransaction(version = 2, inputs = txInputs, outputs = outputs, lockTime = 0L)
+
+        return when (spendType) {
+
+            SpendType.BIP84 -> {
+                val psbt = Psbt(
+                    unsignedTx = unsignedTx,
+                    inputs     = MutableList(txInputs.size) { PsbtInput() },
+                    outputs    = MutableList(outputs.size) { PsbtOutput() }
+                )
+
+                spendable.forEachIndexed { i, s ->
+                    val sig = SegwitSigner.sign(
+                        unsignedTx   = unsignedTx,
+                        inputIndex   = i,
+                        utxoValue    = s.valueSats,
+                        scriptPubKey = s.scriptPubKey,
+                        privateKey   = s.privateKey
+                    )
+                    psbt.inputs[i].witnessUtxo = TxOut(s.valueSats, s.scriptPubKey)
+                    psbt.inputs[i].partialSignatures[s.pubKey.toHex()] = sig
+                }
+                spendable.forEach { it.privateKey.fill(0) }
+
+                Pair(psbt.finalize(), psbt.txid())
+            }
+
+            SpendType.BIP86 -> {
+                val psbt = PsbtTaproot(
+                    unsignedTx = unsignedTx,
+                    inputs     = MutableList(txInputs.size) { TaprootPsbtInput() },
+                    outputs    = MutableList(outputs.size) { PsbtOutput() }
+                )
+
+                val utxoTxOuts = spendable.map { TxOut(it.valueSats, it.scriptPubKey) }
+
+                spendable.forEachIndexed { i, s ->
+                    psbt.inputs[i].witnessUtxo = TxOut(s.valueSats, s.scriptPubKey)
+
+                    val sighash = TaprootSighashCalculator.calculate(
+                        tx         = unsignedTx,
+                        inputIndex = i,
+                        utxos      = utxoTxOuts
+                    )
+                    val tweakedPrivKey = Secp256k1.taprootTweakPrivateKey(s.privateKey)
+                    try {
+                        psbt.inputs[i].tapKeySig = SchnorrSigner.sign(
+                            msg32     = sighash,
+                            privKey32 = tweakedPrivKey
+                        )
+                    } finally {
+                        tweakedPrivKey.fill(0)
+                    }
+                }
+                spendable.forEach { it.privateKey.fill(0) }
+
+                Pair(psbt.finalize(), unsignedTx.txid())
+            }
+        }
+    }
+}

@@ -70,6 +70,19 @@ data class WalletData(
     var needsFullRescan: Boolean = false,
 
     // -----------------------------
+    // Memória local do último saldo conhecido (estado mutável) — permite
+    // pintar a tela com o saldo IMEDIATO ao abrir a carteira, sem esperar
+    // a resposta de rede do scan (que continua rodando por trás, via o
+    // scan incremental acima, pra manter isso atualizado). Nunca é a
+    // fonte de verdade pra decisão financeira (assinatura de envio sempre
+    // usa o resultado fresco de WalletScanner.scan), só serve pra exibição
+    // inicial. null = nenhum scan bem-sucedido ainda nesta carteira.
+    var cachedBalanceSats: Long? = null,
+    var cachedPendingSats: Long? = null,
+    var cachedUtxoCount: Int? = null,
+    var cachedScanTimeMs: Long? = null,
+
+    // -----------------------------
     // UTXOs congelados ("txid:vout"), fora da seleção automática e manual
     // -----------------------------
     val frozenUtxoKeys: Set<String>,

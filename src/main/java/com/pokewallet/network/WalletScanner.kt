@@ -19,7 +19,16 @@ import com.pokewallet.crypto.SpendType
  */
 object WalletScanner {
 
-    const val GAP_LIMIT_DEFAULT = 20
+    // Desvio deliberado do padrão BIP44 (20, usado por Electrum e a
+    // maioria das wallets) — pedido explícito do Felipe (2026-08-16),
+    // ciente do risco: um endereço com uso real seguido de 6-19 endereços
+    // NUNCA usados (gap real maior que 5) fica invisível pro scan. O
+    // contador de gap (scanChain, mais abaixo) já zera sozinho toda vez
+    // que acha atividade, então isso NÃO limita o total de endereços
+    // varridos (carteiras com 300+ endereços usados continuam achando
+    // saldo em todos eles) — só encurta quantos endereços SEM uso em
+    // sequência a varredura tolera antes de desistir daquela fronteira.
+    const val GAP_LIMIT_DEFAULT = 5
 
     // ── Models ────────────────────────────────────────────
 
