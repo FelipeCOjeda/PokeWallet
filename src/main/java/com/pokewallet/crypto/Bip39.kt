@@ -1,5 +1,6 @@
 package com.pokewallet.crypto
 
+import java.text.Normalizer
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
@@ -39,14 +40,23 @@ object Bip39 {
      * Converte mnemonic + passphrase em seed (BIP-39).
      * Passphrase vazia = wallet "default"
      * Passphrase diferente = outra wallet (negação plausível)
+     *
+     * O spec BIP-39 exige normalizar mnemonic e passphrase pra NFKD antes
+     * do PBKDF2. A wordlist é só inglês (ASCII, NFKD não muda nada nela),
+     * mas a passphrase é texto livre digitado pelo usuário — sem
+     * normalizar, a MESMA passphrase visível (ex: "café") digitada em
+     * teclados/IMEs diferentes pode chegar como formas Unicode distintas
+     * (NFC vs NFD), gerando SEEDS DIFERENTES silenciosamente e quebrando a
+     * restauração em qualquer outra wallet BIP-39-compliant (Electrum,
+     * hardware wallet, etc.) que normalize corretamente.
      */
     fun mnemonicToSeed(
         mnemonic: List<String>,
         passphrase: String = ""
     ): ByteArray {
 
-        val sentence = mnemonic.joinToString(" ")
-        val salt = "mnemonic$passphrase"
+        val sentence = Normalizer.normalize(mnemonic.joinToString(" "), Normalizer.Form.NFKD)
+        val salt = "mnemonic" + Normalizer.normalize(passphrase, Normalizer.Form.NFKD)
 
         val spec = PBEKeySpec(
             sentence.toCharArray(),

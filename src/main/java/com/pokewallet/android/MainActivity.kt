@@ -7,6 +7,7 @@ import androidx.fragment.app.commit
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.pokewallet.R
+import com.pokewallet.crypto.WalletStorage
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -42,6 +43,16 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    // App indo pro background — descarta o cache de wallet.json decriptado
+    // (mnemonic/passphrase em texto puro na memória, ver WalletStorage.
+    // clearCache()) em vez de deixar sentado lá pelo resto do processo.
+    // Próxima vez que o app voltar ao foreground, load() decripta de novo
+    // do disco normalmente — custo desprezível, roda uma vez por sessão.
+    override fun onStop() {
+        super.onStop()
+        WalletStorage.clearCache()
     }
 
     private fun showFragment(fragment: Fragment) {

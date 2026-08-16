@@ -42,6 +42,22 @@ object WalletStorage {
 
     fun exists(): Boolean = walletFile.exists()
 
+    /**
+     * Descarta o cache de JSON decriptado em memória (mnemonic/passphrase
+     * em texto puro, ver doc de [cachedRawJson]) — chamada quando o app vai
+     * pro background (MainActivity.onStop()). Mitigação, não solução
+     * completa: `String` do Java/Kotlin é imutável, não dá pra zerar os
+     * bytes de verdade (só descartar a referência e deixar o GC coletar
+     * quando quiser) — o cache ainda existe enquanto o app está em uso
+     * ativo (é o motivo dele existir: evitar redecriptar AES-GCM em toda
+     * chamada de load(), dezenas de vezes por sessão), mas não sobrevive
+     * indefinidamente pelo tempo de vida inteiro do processo. Próximo
+     * load() depois disso volta a decriptar do disco normalmente.
+     */
+    fun clearCache(): Unit = synchronized(lock) {
+        cachedRawJson = null
+    }
+
     fun load(): WalletData = synchronized(lock) { loadLocked() }
 
     private fun loadLocked(): WalletData {

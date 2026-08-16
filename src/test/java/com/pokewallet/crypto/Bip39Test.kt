@@ -1,7 +1,10 @@
 package com.pokewallet.crypto
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
+import java.text.Normalizer
 
 /**
  * Vetores de teste OFICIAIS do BIP39, do conjunto canônico usado por
@@ -71,6 +74,45 @@ class Bip39Test {
         val seed = Bip39.mnemonicToSeed(mnemonic, passphrase = "TREZOR")
         assertEquals(
             "bda85446c68413707090a52022edd26a1c9462295029f2e60cd7c4f2bbd3097170af7a4d73245cafa9c3cca8d561a7c3de6f5d4a10be8ed2a5e608d68f92fcc8",
+            seed.toHex()
+        )
+    }
+
+    // ── Correção do achado ALTO da auditoria (item 10): normalização NFKD ──
+
+    @Test
+    fun `mnemonicToSeed normaliza passphrase NFKD - formas Unicode diferentes da mesma passphrase visivel produzem a mesma seed`() {
+        val mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".split(" ")
+
+        // "café" — NFC: "é" como 1 codepoint precomposto (U+00E9).
+        // NFD: "e" + acento agudo combinante em separado (U+0065 U+0301).
+        // Visualmente idênticas, bytes diferentes — exatamente o cenário
+        // de um usuário digitando a mesma passphrase em teclados/IMEs
+        // diferentes sem normalizar do lado da wallet.
+        val nfcForm = Normalizer.normalize("café", Normalizer.Form.NFC)
+        val nfdForm = Normalizer.normalize("café", Normalizer.Form.NFD)
+        assertNotEquals("sanity check: as duas formas têm que ser strings Java diferentes de fato", nfcForm, nfdForm)
+
+        val seedFromNfc = Bip39.mnemonicToSeed(mnemonic, nfcForm)
+        val seedFromNfd = Bip39.mnemonicToSeed(mnemonic, nfdForm)
+
+        assertArrayEquals(
+            "com normalização NFKD, as duas formas da mesma passphrase visível devem gerar a MESMA seed",
+            seedFromNfc, seedFromNfd
+        )
+    }
+
+    @Test
+    fun `mnemonicToSeed com passphrase so ASCII nao muda com a normalizacao - vetor oficial continua batendo`() {
+        // "TREZOR" já é NFKD-estável (ASCII puro) — os vetores oficiais
+        // acima continuam batendo exatamente como antes da normalização;
+        // este teste só deixa esse invariante explícito.
+        val mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".split(" ")
+        val normalized = Normalizer.normalize("TREZOR", Normalizer.Form.NFKD)
+        assertEquals("TREZOR", normalized)
+        val seed = Bip39.mnemonicToSeed(mnemonic, passphrase = "TREZOR")
+        assertEquals(
+            "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04",
             seed.toHex()
         )
     }
