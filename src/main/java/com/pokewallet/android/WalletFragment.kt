@@ -381,6 +381,7 @@ class WalletFragment : Fragment() {
     private fun showAirGappedSignResultDialog(rawTxHex: String, txid: String) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_airgapped_sign_result, null)
         dialogView.findViewById<TextView>(R.id.tv_signed_txid).text = "txid: $txid"
+        dialogView.findViewById<TextView>(R.id.tv_signed_tx_hex).text = rawTxHex
 
         val imgQr = dialogView.findViewById<android.widget.ImageView>(R.id.img_qr_signed_tx)
         try {
@@ -388,13 +389,19 @@ class WalletFragment : Fragment() {
             imgQr.setImageBitmap(generateQrBitmap(rawTxHex, sizePx))
         } catch (_: Exception) {
             imgQr.visibility = View.GONE
-            Toast.makeText(requireContext(), "TX assinada grande demais pra um QR só (muitos inputs) — transmita manualmente.", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), "TX assinada grande demais pra um QR só (muitos inputs) — copie o texto abaixo e cole no outro aparelho.", Toast.LENGTH_LONG).show()
         }
 
         val dialog = AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
             .setView(dialogView)
             .setCancelable(false)
             .create()
+
+        dialogView.findViewById<MaterialButton>(R.id.btn_copy_signed_tx_hex).setOnClickListener {
+            val cm = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("Signed tx hex", rawTxHex))
+            Toast.makeText(requireContext(), "Texto copiado!", Toast.LENGTH_SHORT).show()
+        }
 
         dialogView.findViewById<MaterialButton>(R.id.btn_close_sign_result).setOnClickListener {
             dialog.dismiss()
@@ -1200,6 +1207,9 @@ class WalletFragment : Fragment() {
         val imgQr        = dialogView.findViewById<android.widget.ImageView>(R.id.img_qr_psbt)
         val tvExpected   = dialogView.findViewById<TextView>(R.id.tv_expected_txid)
         val btnScan      = dialogView.findViewById<MaterialButton>(R.id.btn_scan_signed_tx)
+        val layoutPasteHex = dialogView.findViewById<LinearLayout>(R.id.layout_paste_signed_tx)
+        val etHex        = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.et_signed_tx_hex)
+        val btnConfirmHex = dialogView.findViewById<MaterialButton>(R.id.btn_confirm_signed_tx_hex)
         val progress     = dialogView.findViewById<ProgressBar>(R.id.progress_airgapped)
         val tvResult     = dialogView.findViewById<TextView>(R.id.tv_airgapped_result)
         val btnClose     = dialogView.findViewById<MaterialButton>(R.id.btn_close_airgapped)
@@ -1244,8 +1254,22 @@ class WalletFragment : Fragment() {
                 progress.visibility = View.VISIBLE
                 tvResult.visibility = View.GONE
                 btnScan.isEnabled = false
+                btnConfirmHex.isEnabled = false
                 viewModel.submitSignedAirGappedTx(scanned.trim(), psbt.expectedTxid, psbt.network, broadcastMode)
             }
+        }
+
+        btnConfirmHex.setOnClickListener {
+            val hex = etHex.text?.toString()?.trim().orEmpty()
+            if (hex.isEmpty()) {
+                Toast.makeText(requireContext(), "Cole o texto da tx assinada antes de confirmar.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            progress.visibility = View.VISIBLE
+            tvResult.visibility = View.GONE
+            btnScan.isEnabled = false
+            btnConfirmHex.isEnabled = false
+            viewModel.submitSignedAirGappedTx(hex, psbt.expectedTxid, psbt.network, broadcastMode)
         }
 
         airGappedBroadcastJob?.cancel()
@@ -1258,6 +1282,7 @@ class WalletFragment : Fragment() {
                     is AirGappedBroadcastState.Success -> {
                         progress.visibility = View.GONE
                         btnScan.visibility = View.GONE
+                        layoutPasteHex.visibility = View.GONE
                         tvResult.setTextColor(ContextCompat.getColor(requireContext(), R.color.green_status))
                         tvResult.text = "✅ Transmitida!\ntxid: ${state.txid.take(16)}…"
                         tvResult.visibility = View.VISIBLE
@@ -1266,6 +1291,7 @@ class WalletFragment : Fragment() {
                     is AirGappedBroadcastState.Error -> {
                         progress.visibility = View.GONE
                         btnScan.isEnabled = true
+                        btnConfirmHex.isEnabled = true
                         tvResult.setTextColor(ContextCompat.getColor(requireContext(), R.color.error_red))
                         tvResult.text = state.message
                         tvResult.visibility = View.VISIBLE

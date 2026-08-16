@@ -123,6 +123,58 @@
             app:backgroundTint="@color/bitcoin_orange"
             android:layout_marginBottom="12dp" />
 
+        <!-- Alternativa ao QR: colar o texto do hex assinado direto (útil
+             quando o QR do outro aparelho não coube — muitos inputs — e ele
+             mostrou o texto pra copiar em vez do QR). -->
+        <LinearLayout
+            android:id="@+id/layout_paste_signed_tx"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="OU COLE O TEXTO DA TX ASSINADA"
+                android:textSize="10sp"
+                style="@style/Gameboy.Label"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="hex da tx assinada"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_marginBottom="8dp"
+                app:boxStrokeColor="@color/gb_border_soft"
+                app:hintTextColor="@color/gb_border_soft">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_signed_tx_hex"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textMultiLine|textNoSuggestions"
+                    android:textColor="@color/gb_border"
+                    android:fontFamily="monospace"
+                    android:textSize="12sp"
+                    android:minLines="3"
+                    android:gravity="top"
+                    android:paddingTop="14dp"
+                    android:paddingBottom="14dp" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_confirm_signed_tx_hex"
+                style="@style/Gameboy.Button.Outline"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Confirmar texto colado"
+                android:textSize="12sp"
+                android:layout_marginBottom="12dp" />
+
+        </LinearLayout>
+
         <ProgressBar
             android:id="@+id/progress_airgapped"
             android:layout_width="wrap_content"
