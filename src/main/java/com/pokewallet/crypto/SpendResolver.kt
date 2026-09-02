@@ -90,8 +90,19 @@ object SpendResolver {
         return candidates.filterIndexed { i, _ -> selectedRefs.containsKey(coinUtxos[i]) }
     }
 
-    /** Resolve o scriptPubKey de destino + valor de envio/troco a partir
-     *  dos UTXOs JÁ escolhidos (ver [chooseUtxos]) — puro, sem rede/IO. */
+    /**
+     * Resolve o scriptPubKey de destino + valor de envio/troco a partir
+     * dos UTXOs JÁ escolhidos (ver [chooseUtxos]) — puro, sem rede/IO.
+     *
+     * [precomputedDestSpk], quando presente, pula [AddressCodec.addressToScriptPubKey]
+     * e usa esse valor direto — necessário pra endereço Silent Payments
+     * (BIP-352): o scriptPubKey real de um output SP só pode ser calculado
+     * por quem tem as chaves privadas dos inputs sendo gastos (precisa de
+     * ECDH), então quem chama isso pra um destino SP já resolveu o script
+     * ANTES de chegar aqui (ver WalletViewModel.resolveSpend /
+     * TxAssembler.resolveSilentPaymentDestination) — SP não é um tipo de
+     * script fixo decodificável só a partir do endereço.
+     */
     fun resolve(
         chosen: List<Candidate>,
         destination: String,
@@ -99,10 +110,11 @@ object SpendResolver {
         amountSats: Long?,
         sweep: Boolean,
         feeRateSatPerVbyte: Double,
-        spendType: SpendType
+        spendType: SpendType,
+        precomputedDestSpk: ByteArray? = null
     ): Resolved {
         val totalInputSats = chosen.sumOf { it.utxo.valueSats }
-        val destSpk = AddressCodec.addressToScriptPubKey(destination, network)
+        val destSpk = precomputedDestSpk ?: AddressCodec.addressToScriptPubKey(destination, network)
 
         val plan = ChangePlanner.plan(
             totalInputSats     = totalInputSats,

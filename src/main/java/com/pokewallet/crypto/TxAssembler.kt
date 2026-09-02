@@ -65,6 +65,61 @@ object TxAssembler {
     }
 
     /**
+     * Calcula o scriptPubKey REAL de um output Silent Payments (BIP-352)
+     * pros UTXOs JÁ ESCOLHIDOS de um envio — só quem tem as chaves privadas
+     * de TODOS os inputs sendo gastos consegue calcular isso (precisa do
+     * ECDH remetente, ``a·B_scan``), por isso só existe no caminho de
+     * assinatura LOCAL (carteira com seed neste aparelho); watch-only
+     * air-gapped fica pra fase futura (ver plano, Fase 4).
+     *
+     * Deriva a chave de cada input do jeito que [com.pokewallet.crypto.Bip352]
+     * exige — chave JÁ TWEAKED pra Taproot (BIP86), chave HD crua pra
+     * SegWit v0 (BIP84), ver nota de armadilha em [Bip352.SenderInput] — e
+     * soma UMA vez POR INPUT, sem deduplicar por endereço repetido (BIP-352
+     * soma ``a = a1 + a2 + ... + an``, um termo por input elegível, conferido
+     * direto no texto da spec: não há deduplicação de chave/endereço). Zera
+     * toda chave privada temporária usada só pra este cálculo antes de
+     * retornar — a assinatura de verdade deriva de novo em
+     * [deriveSpendableInputs], os dois caminhos não compartilham array de
+     * chave por design.
+     */
+    fun resolveSilentPaymentDestination(
+        chosen: List<SpendResolver.Candidate>,
+        destination: String,
+        seed: ByteArray,
+        network: Network,
+        spendType: SpendType
+    ): ByteArray {
+        val decoded = SilentPaymentAddress.decode(destination, network)
+        val rawKeyCache = mutableMapOf<Pair<Int, Int>, ByteArray>()
+        val tweakedKeys = mutableListOf<ByteArray>()
+        try {
+            val senderInputs = chosen.map { c ->
+                val rawKey = rawKeyCache.getOrPut(c.chain to c.index) {
+                    deriveKeyAndScript(seed, network, spendType, c.chain, c.index).first
+                }
+                val effectiveKey = when (spendType) {
+                    SpendType.BIP84 -> rawKey
+                    SpendType.BIP86 -> Secp256k1.taprootTweakPrivateKey(rawKey).also { tweakedKeys += it }
+                }
+                Bip352.SenderInput(effectiveKey, isTaproot = spendType == SpendType.BIP86)
+            }
+            val outpoints = chosen.map { c ->
+                Bip352.outpoint(c.utxo.txid.hexToBytes().reversedArray(), c.utxo.vout)
+            }
+            return Bip352.deriveSenderOutputScript(
+                inputs      = senderInputs,
+                outpoints   = outpoints,
+                scanPubKey  = decoded.scanPubKey,
+                spendPubKey = decoded.spendPubKey
+            )
+        } finally {
+            rawKeyCache.values.forEach { it.fill(0) }
+            tweakedKeys.forEach { it.fill(0) }
+        }
+    }
+
+    /**
      * Monta e assina a tx final a partir dos inputs já derivados
      * ([deriveSpendableInputs]) e dos outputs (destino [+troco]) — mesma
      * lógica pros dois tipos de endereço suportados (BIP84 SegWit v0 via

@@ -1340,6 +1340,13 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
      * NENHUMA chave (nem pública nem privada) — isso é responsabilidade de
      * cada chamador, já que os dois caminhos derivam de formas diferentes
      * (seed vs. xpub).
+     *
+     * [seed], quando presente, habilita destino Silent Payments (BIP-352,
+     * Fase 1): só o caminho de assinatura local (carteira com seed neste
+     * aparelho) consegue calcular o scriptPubKey real de um output SP —
+     * o watch-only air-gapped (que chama sem [seed]) recebe erro claro se
+     * o destino for um endereço SP, ao invés de tentar e falhar fundo
+     * (ver TxAssembler.resolveSilentPaymentDestination pro motivo).
      */
     private suspend fun resolveSpend(
         wallet: WalletData,
@@ -1350,7 +1357,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         amountSats: Long?,
         sweep: Boolean,
         feeRateSatPerVbyte: Double,
-        manualUtxoKeys: Set<String>?
+        manualUtxoKeys: Set<String>?,
+        seed: ByteArray? = null
     ): SpendResolver.Resolved {
         val scanResult = scanForSend(xpub, network, spendType)
         if (scanResult.totalSats == 0L) error("Saldo zero — nada para enviar.")
@@ -1374,7 +1382,16 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val dataSource = NodePrefs.dataSource(getApplication())
         chosen.forEach { UtxoValueVerifier.verify(dataSource, network, it.utxo) }
 
-        return SpendResolver.resolve(chosen, destination, network, amountSats, sweep, feeRateSatPerVbyte, spendType)
+        val precomputedDestSpk = if (SilentPaymentAddress.looksLikeSilentPaymentAddress(destination)) {
+            val s = requireNotNull(seed) {
+                "Esta carteira é watch-only (sem seed neste aparelho) — enviar pra um endereço " +
+                "Silent Payments ainda exige a carteira com a seed neste dispositivo. Suporte " +
+                "air-gapped pra Silent Payments é uma fase futura."
+            }
+            TxAssembler.resolveSilentPaymentDestination(chosen, destination, s, network, spendType)
+        } else null
+
+        return SpendResolver.resolve(chosen, destination, network, amountSats, sweep, feeRateSatPerVbyte, spendType, precomputedDestSpk)
     }
 
     private suspend fun buildSignedTx(
@@ -1402,7 +1419,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val seed    = SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
         val spendType = wallet.spendType
 
-        val resolved = resolveSpend(wallet, xpub, network, spendType, destination, amountSats, sweep, feeRateSatPerVbyte, manualUtxoKeys)
+        val resolved = resolveSpend(wallet, xpub, network, spendType, destination, amountSats, sweep, feeRateSatPerVbyte, manualUtxoKeys, seed)
 
         val spendable = TxAssembler.deriveSpendableInputs(resolved.chosen, seed, network, spendType)
 
