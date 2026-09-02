@@ -152,6 +152,9 @@ class WalletFragment : Fragment() {
         val btnConfigureElectrum = view.findViewById<MaterialButton>(R.id.btn_configure_electrum)
         val tvTorStatus      = view.findViewById<TextView>(R.id.tv_tor_status)
         val btnConfigureTor  = view.findViewById<MaterialButton>(R.id.btn_configure_tor)
+        val tvSpOracleStatus = view.findViewById<TextView>(R.id.tv_sp_oracle_status)
+        val btnConfigureSpOracle = view.findViewById<MaterialButton>(R.id.btn_configure_sp_oracle)
+        val btnSyncSilentPayments = view.findViewById<MaterialButton>(R.id.btn_sync_silent_payments)
         val cardError        = view.findViewById<View>(R.id.card_error)
         val tvError          = view.findViewById<TextView>(R.id.tv_error)
         val bottomNav        = view.findViewById<BottomNavigationView>(R.id.bottom_nav)
@@ -183,6 +186,7 @@ class WalletFragment : Fragment() {
                     cardBag.visibility = View.VISIBLE
                     tvElectrumStatus.text = NodePrefs.statusLabel(requireContext())
                     tvTorStatus.text = TorPrefs.statusLabel(requireContext())
+                    updateSpOracleStatus(tvSpOracleStatus)
                     true
                 }
                 else -> false
@@ -227,6 +231,10 @@ class WalletFragment : Fragment() {
 
         tvTorStatus.text = TorPrefs.statusLabel(requireContext())
         btnConfigureTor.setOnClickListener { showTorConfigDialog(tvTorStatus) }
+
+        updateSpOracleStatus(tvSpOracleStatus)
+        btnConfigureSpOracle.setOnClickListener { showSpOracleDialog(tvSpOracleStatus) }
+        btnSyncSilentPayments.setOnClickListener { triggerSilentPaymentsSync(tvSpOracleStatus, btnSyncSilentPayments) }
 
         val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
@@ -1563,6 +1571,99 @@ class WalletFragment : Fragment() {
 
         dialog.show()
         dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+    }
+
+    /** Atualiza o texto de status da seção Silent Payments (Mochila) — host
+     *  configurado, altura já escaneada e quantos UTXOs SP já foram
+     *  achados. Chamado ao abrir a Mochila, depois de configurar o oracle,
+     *  e depois de cada sync. */
+    private fun updateSpOracleStatus(statusView: TextView) {
+        val status = viewModel.getSilentPaymentSyncStatus()
+        statusView.text = when {
+            status == null -> "…"
+            status.isWatchOnly -> "⚠️ Carteira watch-only — scan Silent Payments exige a carteira com a seed neste aparelho (fase futura)."
+            status.oracleHost == null -> "⚠️ Nenhum oracle configurado pra esta rede — configure um manualmente."
+            else -> {
+                val tipLabel = if (status.lastScanTipHeight > 0) status.lastScanTipHeight.toString() else "ainda não escaneado"
+                "🔒 Oracle: ${status.oracleHost}${if (!status.oracleTlsEnabled) " (sem TLS)" else ""}\n" +
+                    "Escaneado até altura $tipLabel · ${status.knownUtxoCount} UTXO(s) Silent Payments"
+            }
+        }
+    }
+
+    /** Configura o host do blindbit-oracle (Mochila, seção "Silent
+     *  Payments") — mesmo padrão de [showElectrumNodeDialog], só que sem
+     *  porta separada (a URL já inclui host+esquema) nem opção de
+     *  desligar (sempre há um host, próprio ou o bootstrap público). */
+    private fun showSpOracleDialog(statusView: TextView) {
+        val context = requireContext()
+        val status = viewModel.getSilentPaymentSyncStatus()
+        if (status == null) {
+            Toast.makeText(context, "Aguarde a carteira terminar de carregar.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val dialogView   = layoutInflater.inflate(R.layout.dialog_sp_oracle, null)
+        val etHost       = dialogView.findViewById<TextInputEditText>(R.id.et_sp_oracle_host)
+        val cbTls        = dialogView.findViewById<CheckBox>(R.id.cb_sp_oracle_tls)
+        val tvTlsWarning = dialogView.findViewById<TextView>(R.id.tv_sp_oracle_tls_warning)
+        val tvError      = dialogView.findViewById<TextView>(R.id.tv_sp_oracle_error)
+        val btnCancel    = dialogView.findViewById<MaterialButton>(R.id.btn_cancel_sp_oracle)
+        val btnConfirm   = dialogView.findViewById<MaterialButton>(R.id.btn_confirm_sp_oracle)
+
+        etHost.setText(status.oracleHost ?: "")
+        cbTls.isChecked = status.oracleTlsEnabled
+        tvTlsWarning.visibility = if (cbTls.isChecked) View.GONE else View.VISIBLE
+        cbTls.setOnCheckedChangeListener { _, checked ->
+            tvTlsWarning.visibility = if (checked) View.GONE else View.VISIBLE
+        }
+
+        val dialog = AlertDialog.Builder(context, R.style.Theme_PokéWallet_Dialog)
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        btnConfirm.setOnClickListener {
+            val host = etHost.text?.toString()?.trim() ?: ""
+            if (host.isEmpty()) {
+                tvError.text       = "Informe o host do oracle."
+                tvError.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            BlindBitOraclePrefs.save(context, host = host, useTls = cbTls.isChecked)
+            updateSpOracleStatus(statusView)
+            dialog.dismiss()
+        }
+
+        dialog.show()
+        dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+    }
+
+    /** Dispara viewModel.syncSilentPayments() (Mochila, botão "Sincronizar
+     *  agora") — desabilita o botão enquanto roda (pode levar um tempo,
+     *  ~2000 blocos no primeiro scan) pra evitar toque duplo disparando
+     *  dois syncs concorrentes. */
+    private fun triggerSilentPaymentsSync(statusView: TextView, button: MaterialButton) {
+        button.isEnabled = false
+        val originalText = button.text
+        button.text = "🔄 Sincronizando…"
+        lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { viewModel.syncSilentPayments() }
+                updateSpOracleStatus(statusView)
+                val msg = if (result.confirmedUtxos.isEmpty())
+                    "Sincronizado — nenhum pagamento Silent Payments novo encontrado."
+                else
+                    "✅ ${result.confirmedUtxos.size} pagamento(s) Silent Payments encontrado(s)!"
+                Toast.makeText(requireContext(), msg, Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "Erro ao sincronizar Silent Payments: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                button.isEnabled = true
+                button.text = originalText
+            }
+        }
     }
 
     /** Configura o host:porta do proxy SOCKS do Orbot (Mochila, seção

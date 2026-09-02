@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_overworld_repeat">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_gameboy_box"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🔒 ORACLE SILENT PAYMENTS"
+            android:textSize="13sp"
+            style="@style/Gameboy.Title"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Servidor blindbit-oracle usado pra escanear recebimento Silent Payments (BIP-352) — já vem com um servidor público como padrão (trocável a qualquer momento pra um próprio). O servidor NUNCA vê suas chaves privadas; ele só manda dados de bloco pra você processar localmente."
+            android:textSize="13sp"
+            android:textColor="@color/gb_border_soft"
+            android:lineSpacingExtra="3dp"
+            android:layout_marginBottom="20dp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Host (ex: signet.oracle.setor.dev)"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_marginBottom="12dp"
+            app:boxStrokeColor="@color/gb_border_soft"
+            app:hintTextColor="@color/gb_border_soft">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_sp_oracle_host"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textUri|textNoSuggestions"
+                android:textColor="@color/gb_border"
+                android:fontFamily="monospace"
+                android:singleLine="true" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <CheckBox
+            android:id="@+id/cb_sp_oracle_tls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🔒 Usar TLS/SSL"
+            android:textColor="@color/gb_border"
+            android:textStyle="bold"
+            android:buttonTint="@color/bitcoin_orange"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tv_sp_oracle_tls_warning"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="@color/error_red"
+            android:lineSpacingExtra="2dp"
+            android:text="⚠️ Sem TLS, os dados de bloco trafegam sem criptografia e sem verificação de integridade — só desligue pra um oracle próprio na sua LAN."
+            android:layout_marginBottom="12dp" />
+
+        <!-- Erro -->
+        <TextView
+            android:id="@+id/tv_sp_oracle_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/error_red"
+            android:textSize="13sp"
+            android:lineSpacingExtra="3dp"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
+        <!-- Botões -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="16dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_cancel_sp_oracle"
+                style="@style/Gameboy.Button.Outline"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:text="Cancelar"
+                android:textSize="12sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_confirm_sp_oracle"
+                style="@style/Gameboy.Button"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:text="Salvar"
+                android:textSize="12sp"
+                app:backgroundTint="@color/accent_yellow" />
+
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

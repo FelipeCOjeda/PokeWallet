@@ -63,6 +63,14 @@ object BlindBitOraclePrefs {
             .apply()
     }
 
+    /** Texto curto pra UI (Mochila, seção "Silent Payments") — não inclui
+     *  altura escaneada/contagem de UTXOs, isso é responsabilidade de quem
+     *  chama (depende da carteira ativa, que este objeto não conhece). */
+    fun statusLabel(context: Context, network: Network): String {
+        val h = host(context, network) ?: return "⚠️ Nenhum oracle configurado pra esta rede"
+        return "🔒 Oracle: $h" + if (!isTlsEnabled(context)) " (sem TLS)" else ""
+    }
+
     /** URL completa pronta pra [com.pokewallet.network.BlindBitOracleClient]
      *  — null se não há host (customizado nem padrão) pra essa rede. */
     fun baseUrl(context: Context, network: Network): String? {

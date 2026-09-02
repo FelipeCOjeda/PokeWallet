@@ -501,6 +501,50 @@
                         android:background="@color/gb_border_soft"
                         android:layout_marginVertical="12dp" />
 
+                    <!-- Scan de recebimento Silent Payments (BIP-352, Fase 3) —
+                         oracle (blindbit-oracle) configurável, mesmo padrão do
+                         node Electrum acima. Só carteira com seed (watch-only
+                         "somente scan" é fase futura). -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🔒 SILENT PAYMENTS"
+                        android:textSize="10sp"
+                        style="@style/Gameboy.Label"
+                        android:layout_marginBottom="10dp" />
+
+                    <TextView
+                        android:id="@+id/tv_sp_oracle_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="12sp"
+                        android:textColor="@color/gb_border_soft"
+                        android:layout_marginBottom="10dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_configure_sp_oracle"
+                        style="@style/Gameboy.Button.Outline"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:text="🔒 Configurar Oracle"
+                        android:textSize="10sp"
+                        android:layout_marginBottom="10dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_sync_silent_payments"
+                        style="@style/Gameboy.Button"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:text="🔄 Sincronizar agora"
+                        android:textSize="10sp"
+                        app:backgroundTint="@color/green_status" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1.5dp"
+                        android:background="@color/gb_border_soft"
+                        android:layout_marginVertical="12dp" />
+
                     <!-- Tor (Orbot) — usado só na hora de enviar (modo "Tor" no diálogo de envio) -->
                     <TextView
                         android:layout_width="wrap_content"

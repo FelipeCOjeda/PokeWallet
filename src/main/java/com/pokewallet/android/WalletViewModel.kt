@@ -979,6 +979,40 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Dados pra UI mostrar o status do scan Silent Payments (Mochila,
+     *  seção "Silent Payments") — [network] já colapsada (REGTEST->TESTNET,
+     *  mesma convenção do resto do fluxo SP) pra bater com o host resolvido
+     *  por [BlindBitOraclePrefs]. */
+    data class SilentPaymentSyncStatus(
+        val network: Network,
+        val oracleHost: String?,
+        val oracleTlsEnabled: Boolean,
+        val lastScanTipHeight: Long,
+        val knownUtxoCount: Int,
+        val isWatchOnly: Boolean
+    )
+
+    fun getSilentPaymentSyncStatus(): SilentPaymentSyncStatus? {
+        if (!walletSwitchMutex.tryLock()) return null
+        return try {
+            val wallet = WalletStorage.load()
+            val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
+            val context = getApplication<Application>()
+            SilentPaymentSyncStatus(
+                network           = network,
+                oracleHost        = BlindBitOraclePrefs.host(context, network),
+                oracleTlsEnabled  = BlindBitOraclePrefs.isTlsEnabled(context),
+                lastScanTipHeight = wallet.spScanTipHeight,
+                knownUtxoCount    = wallet.spUtxos.size,
+                isWatchOnly       = wallet.isWatchOnly
+            )
+        } catch (_: Exception) {
+            null
+        } finally {
+            walletSwitchMutex.unlock()
+        }
+    }
+
     /**
      * "[fingerprint/purpose'/coin'/0']xpub" da carteira ativa — a mesma
      * string que dá pra colar (ou, quando o QR scanner for adicionado,
