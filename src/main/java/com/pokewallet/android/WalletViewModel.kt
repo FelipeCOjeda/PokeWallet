@@ -8,6 +8,7 @@ import com.pokewallet.network.BalanceCrossChecker
 import com.pokewallet.network.BlockstreamClient
 import com.pokewallet.network.FeeEstimates
 import com.pokewallet.network.RemoteUtxo
+import com.pokewallet.network.SilentPaymentsSync
 import com.pokewallet.network.UtxoValueVerifier
 import com.pokewallet.network.WalletScanner
 import com.pokewallet.nostr.GeoRelayDirectory
@@ -903,9 +904,16 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         return try {
             val wallet = WalletStorage.load()
             if (wallet.isWatchOnly) return null
+            // Mesmo colapso REGTEST->TESTNET de buildSignedTx() — o envio pra
+            // SP (TxAssembler.resolveSilentPaymentDestination) decodifica o
+            // destino com a rede JÁ colapsada, então o endereço mostrado aqui
+            // precisa ser codificado com o mesmo HRP, senão uma carteira
+            // REGTEST nunca consegue decodificar o PRÓPRIO endereço de volta
+            // (HRP "sprt" != "tsp").
+            val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
             val seed = SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
             try {
-                SilentPaymentAddressService.ownAddress(seed, wallet.network)
+                SilentPaymentAddressService.ownAddress(seed, network)
             } finally {
                 seed.fill(0)
             }
@@ -913,6 +921,61 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             null
         } finally {
             walletSwitchMutex.unlock()
+        }
+    }
+
+    /**
+     * Escaneia recebimento Silent Payments (BIP-352, Fase 3): descobre até
+     * onde o oracle já indexou, escaneia [wallet.spScanTipHeight]+1 em
+     * diante (ou ~2000 blocos pra trás do tip, se for o primeiro scan desta
+     * carteira — decisão tomada com o usuário), CONFIRMA cada candidato
+     * contra a fonte de dados própria já configurada (Electrum/Blockstream,
+     * nunca só o filtro de 8 bytes do oracle — ver
+     * [com.pokewallet.network.SilentPaymentsConfirmer]) e persiste os
+     * confirmados. Só carteira com seed neste aparelho (mesma limitação de
+     * [getSilentPaymentAddress] — watch-only "somente scan" é a Fase 5,
+     * ainda não implementada). Chamador decide quando/com que frequência
+     * chamar isso — ainda sem UI/gatilho automático (fica pro próximo
+     * passo do plano).
+     */
+    suspend fun syncSilentPayments(): SilentPaymentsSync.SyncResult = walletSwitchMutex.withLock {
+        val wallet = WalletStorage.load()
+        require(!wallet.isWatchOnly) {
+            "Esta carteira é watch-only (sem seed neste aparelho) — scan de Silent Payments ainda exige a carteira com a seed."
+        }
+        // Mesmo colapso de getSilentPaymentAddress()/buildSignedTx() — ver
+        // nota lá sobre HRP consistente entre as fases.
+        val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
+        val context = getApplication<Application>()
+        val oracleUrl = BlindBitOraclePrefs.baseUrl(context, network)
+            ?: error("Nenhum host de oracle configurado pra esta rede — configure um manualmente (sem instância pública conhecida pra REGTEST).")
+        val dataSource = NodePrefs.dataSource(context)
+
+        val seed = SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
+        val scanPriv: ByteArray
+        val spendPub: ByteArray
+        try {
+            scanPriv = Bip352KeyDerivation.scanKey(seed, network).privateKey
+            spendPub = Secp256k1.publicKeyFromPrivate(Bip352KeyDerivation.spendKey(seed, network).privateKey)
+        } finally {
+            seed.fill(0)
+        }
+
+        try {
+            val result = SilentPaymentsSync.sync(
+                oracleBaseUrl         = oracleUrl,
+                dataSource            = dataSource,
+                network               = network,
+                scanPrivateKey        = scanPriv,
+                spendPubKey           = spendPub,
+                previousScanTipHeight = wallet.spScanTipHeight
+            )
+            if (result.confirmedUtxos.isNotEmpty() || result.newScanTipHeight != wallet.spScanTipHeight) {
+                WalletStorage.addSilentPaymentUtxos(result.confirmedUtxos, result.newScanTipHeight)
+            }
+            result
+        } finally {
+            scanPriv.fill(0)
         }
     }
 
