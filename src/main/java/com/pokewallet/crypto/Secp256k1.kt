@@ -190,6 +190,93 @@ object Secp256k1 {
     }
 
     // =================================================
+    // Aritmética de ponto/escalar arbitrária (Silent Payments / BIP-352)
+    //
+    // Tudo abaixo opera em bytes (pubkey comprimida 33B / escalar 32B) pra
+    // não vazar o tipo ECPoint do BouncyCastle pro resto do app — os
+    // métodos acima só multiplicam pelo GERADOR; ECDH do BIP-352 precisa
+    // multiplicar/somar pontos arbitrários.
+    // =================================================
+
+    /** Multiplica um ponto arbitrário (pubkey comprimida) por um escalar. */
+    fun pointMultiply(point: ByteArray, scalar: ByteArray): ByteArray {
+        require(point.size == 33) { "ponto precisa ter 33 bytes (comprimido)" }
+        require(scalar.size == 32) { "escalar precisa ter 32 bytes" }
+        val p = CURVE.curve.decodePoint(point)
+        val k = BigInteger(1, scalar)
+        return p.multiply(k).normalize().getEncoded(true)
+    }
+
+    /** Multiplica o GERADOR por um escalar — équivalente a [publicKeyFromPrivate]
+     *  mas sem a exigência de que o escalar seja necessariamente uma chave
+     *  privada "de verdade" (ex: um tweak calculado, não uma chave HD). */
+    fun multiplyGenerator(scalar: ByteArray): ByteArray {
+        require(scalar.size == 32) { "escalar precisa ter 32 bytes" }
+        return CURVE.g.multiply(BigInteger(1, scalar)).normalize().getEncoded(true)
+    }
+
+    /** Soma dois pontos (pubkeys comprimidas). */
+    fun pointAdd(a: ByteArray, b: ByteArray): ByteArray {
+        require(a.size == 33 && b.size == 33) { "pontos precisam ter 33 bytes (comprimidos)" }
+        val pa = CURVE.curve.decodePoint(a)
+        val pb = CURVE.curve.decodePoint(b)
+        return pa.add(pb).normalize().getEncoded(true)
+    }
+
+    /** true se o byte de paridade (0x02/0x03) da pubkey comprimida indica Y ímpar. */
+    fun hasOddY(compressedPubKey: ByteArray): Boolean {
+        require(compressedPubKey.size == 33) { "pubkey precisa ter 33 bytes (comprimida)" }
+        return compressedPubKey[0] == 0x03.toByte()
+    }
+
+    /** (n - d) mod n — nega um escalar na ordem da curva. */
+    fun negateScalar(scalar: ByteArray): ByteArray {
+        require(scalar.size == 32) { "escalar precisa ter 32 bytes" }
+        return N.subtract(BigInteger(1, scalar)).mod(N).toBytes32()
+    }
+
+    /** (a + b) mod n — soma dois escalares na ordem da curva. */
+    fun addScalars(a: ByteArray, b: ByteArray): ByteArray {
+        require(a.size == 32 && b.size == 32) { "escalares precisam ter 32 bytes" }
+        return BigInteger(1, a).add(BigInteger(1, b)).mod(N).toBytes32()
+    }
+
+    /** (a * b) mod n — multiplica dois escalares na ordem da curva. */
+    fun multiplyScalars(a: ByteArray, b: ByteArray): ByteArray {
+        require(a.size == 32 && b.size == 32) { "escalares precisam ter 32 bytes" }
+        return BigInteger(1, a).multiply(BigInteger(1, b)).mod(N).toBytes32()
+    }
+
+    /**
+     * Retorna ''d'' (ou ''n - d'') tal que ''d*G'' tem Y par — convenção
+     * BIP340/341, usada tanto pro tweak de Taproot (já feito acima em
+     * [taprootTweakPrivateKey]/[signSchnorr]) quanto pelo BIP-352, que
+     * exige explicitamente essa normalização pros inputs Taproot antes de
+     * somar as chaves privadas (pra bater com o lado do destinatário, que
+     * sempre assume Y par ao somar as pubkeys x-only on-chain).
+     */
+    fun evenYPrivateKey(privateKey: ByteArray): ByteArray {
+        require(privateKey.size == 32) { "chave privada precisa ter 32 bytes" }
+        val d0 = BigInteger(1, privateKey)
+        val p = CURVE.g.multiply(d0).normalize()
+        val d = if (p.yCoord.toBigInteger().testBit(0)) N.subtract(d0) else d0
+        return d.toBytes32()
+    }
+
+    /**
+     * Reduz um hash de 32 bytes mod n, validando que o resultado é um
+     * escalar válido (não-zero) — usado pro ''input_hash'' e pro ''t_k'' do
+     * BIP-352, que devem FALHAR (probabilidade ~0 na prática) em vez de
+     * silenciosamente aceitar um valor fora do intervalo válido.
+     */
+    fun hashToScalar(hash: ByteArray): ByteArray {
+        require(hash.size == 32) { "hash precisa ter 32 bytes" }
+        val v = BigInteger(1, hash).mod(N)
+        require(v != BigInteger.ZERO) { "hash reduziu a zero mod n (probabilidade ~0) — tente com outro input" }
+        return v.toBytes32()
+    }
+
+    // =================================================
     // Tagged Hash (BIP340)
     // =================================================
 

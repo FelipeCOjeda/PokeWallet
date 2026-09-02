@@ -90,6 +90,21 @@ object Bech32 {
         }
     }
 
+    /**
+     * Bech32m genérico (BIP-350), sem semântica de witness-version — usado
+     * por payloads planos como o endereço Silent Payments (BIP-352), que
+     * não têm o nibble de versão que [encodeSegWit] assume.
+     */
+    fun encodeBech32m(hrp: String, data: IntArray): String {
+        val checksum = createChecksum(hrp, data, BECH32M_CONST)
+        val combined = data + checksum
+        return buildString {
+            append(hrp)
+            append('1')
+            for (d in combined) append(CHARSET[d])
+        }
+    }
+
     fun decode(bech: String): Pair<String, IntArray>? {
         val lower = bech.lowercase()
         val pos = lower.lastIndexOf('1')
