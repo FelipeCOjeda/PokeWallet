@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application") version "8.7.3"
     kotlin("android") version "1.9.23"
+    id("com.squareup.wire") version "5.3.3"
 }
 
 android {
@@ -44,6 +45,17 @@ android {
     }
 }
 
+// Gera o cliente gRPC (Kotlin, sobre OkHttp) a partir de src/main/proto/ —
+// scan de recebimento Silent Payments via blindbit-oracle (Fase 3). Wire
+// (Square) em vez do gRPC-Java oficial: código gerado bem mais enxuto e
+// reusa o OkHttp que o projeto já tem como dependência, evitando puxar a
+// pilha protobuf-java+Guava+transporte próprio do gRPC oficial.
+wire {
+    kotlin {
+        rpcRole = "client"
+    }
+}
+
 dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.78")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.16.0")
@@ -64,6 +76,11 @@ dependencies {
     // suporte a WebSocket em java.net.HttpURLConnection, e nenhuma outra
     // dependência do projeto cobre isso.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Cliente gRPC pro blindbit-oracle (scan de recebimento Silent Payments,
+    // Fase 3) — stubs gerados de src/main/proto/ pelo plugin Wire acima.
+    implementation("com.squareup.wire:wire-runtime:5.3.3")
+    implementation("com.squareup.wire:wire-grpc-client:5.3.3")
 
     testImplementation("junit:junit:4.13.2")
 
