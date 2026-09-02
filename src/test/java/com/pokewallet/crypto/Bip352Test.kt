@@ -181,4 +181,33 @@ class Bip352Test {
         val tweak = Bip352.outputTweak(sharedSecret, 0)
         assertEquals("f438b40179a3c4262de12986c0e6cce0634007cdc79c1dcd3e20b9ebc2e7eef6", tweak.toHex())
     }
+
+    // -------------------------------------------------------------
+    // receiverSharedSecretFromPrecomputedTweak (Fase 3, blindbit-oracle):
+    // quando o servidor já manda input_hash·A pré-computado, multiplicar
+    // isso pela scan private key tem que dar EXATAMENTE o mesmo shared
+    // secret que calcular do zero com receiverSharedSecret — mesmo vetor
+    // oficial do teste acima, só trocando o caminho de cálculo.
+    // -------------------------------------------------------------
+
+    @Test
+    fun `receiverSharedSecretFromPrecomputedTweak bate com receiverSharedSecret calculado do zero`() {
+        val scanPrivKey = "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c".hexToBytes()
+        val sumOfInputPubKeys = "032562c1ab2d6bd45d7ca4d78f569999e5333dffd3ac5263924fd00d00dedc4bee".hexToBytes()
+        val outpoints = listOf(
+            outpointOf("f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16", 0),
+            outpointOf("a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d", 0)
+        )
+        val outpointL = Bip352.smallestOutpoint(outpoints)
+
+        val expected = Bip352.receiverSharedSecret(scanPrivKey, outpointL, sumOfInputPubKeys)
+
+        // "tweak" que um indexador tipo blindbit-oracle mandaria: input_hash·A
+        // já pré-multiplicado, sem o cliente precisar saber outpoint_L/A.
+        val h = Bip352.inputHash(outpointL, sumOfInputPubKeys)
+        val precomputedTweak = Secp256k1.pointMultiply(sumOfInputPubKeys, h)
+
+        val actual = Bip352.receiverSharedSecretFromPrecomputedTweak(scanPrivKey, precomputedTweak)
+        assertEquals(expected.toHex(), actual.toHex())
+    }
 }

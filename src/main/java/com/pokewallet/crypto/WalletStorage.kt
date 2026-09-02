@@ -1,5 +1,6 @@
 package com.pokewallet.crypto
 
+import com.pokewallet.network.SilentPaymentsConfirmer
 import org.json.JSONObject
 import java.io.File
 
@@ -132,6 +133,12 @@ object WalletStorage {
             dirty = true
         }
 
+        if (!json.has("spUtxos")) {
+            json.put("spUtxos", org.json.JSONArray())
+            json.put("spScanTipHeight", 0L)
+            dirty = true
+        }
+
         if (!json.has("isWatchOnly")) {
             json.put("isWatchOnly", false)
             dirty = true
@@ -177,6 +184,20 @@ object WalletStorage {
         val frozenArray = json.optJSONArray("frozenUtxos") ?: org.json.JSONArray()
         val frozenKeys = (0 until frozenArray.length()).map { frozenArray.getString(it) }.toSet()
 
+        val spUtxosArray = json.optJSONArray("spUtxos") ?: org.json.JSONArray()
+        val spUtxos = (0 until spUtxosArray.length()).map { i ->
+            val o = spUtxosArray.getJSONObject(i)
+            SilentPaymentsConfirmer.ConfirmedUtxo(
+                txid              = o.getString("txid"),
+                vout              = o.getInt("vout"),
+                valueSats         = o.getLong("valueSats"),
+                outputXOnlyPubKey = o.getString("outputXOnlyPubKeyHex").hexToBytes(),
+                tweak             = o.getString("tweakHex").hexToBytes(),
+                k                 = o.getInt("k"),
+                blockHeight       = o.getLong("blockHeight")
+            )
+        }
+
         fun intSet(field: String): Set<Int> {
             val arr = json.optJSONArray(field) ?: return emptySet()
             return (0 until arr.length()).mapTo(mutableSetOf()) { arr.getInt(it) }
@@ -207,6 +228,8 @@ object WalletStorage {
             cachedUtxoCount    = if (!json.isNull("cachedUtxoCount")) json.getInt("cachedUtxoCount") else null,
             cachedScanTimeMs   = if (!json.isNull("cachedScanTimeMs")) json.getLong("cachedScanTimeMs") else null,
             frozenUtxoKeys     = frozenKeys,
+            spUtxos            = spUtxos,
+            spScanTipHeight    = json.optLong("spScanTipHeight", 0L),
             raw                = json
         )
     }
@@ -223,6 +246,17 @@ object WalletStorage {
         wallet.raw.put("cachedPendingSats", wallet.cachedPendingSats ?: JSONObject.NULL)
         wallet.raw.put("cachedUtxoCount", wallet.cachedUtxoCount ?: JSONObject.NULL)
         wallet.raw.put("cachedScanTimeMs", wallet.cachedScanTimeMs ?: JSONObject.NULL)
+        wallet.raw.put("spUtxos", org.json.JSONArray(wallet.spUtxos.map { u ->
+            JSONObject()
+                .put("txid", u.txid)
+                .put("vout", u.vout)
+                .put("valueSats", u.valueSats)
+                .put("outputXOnlyPubKeyHex", u.outputXOnlyPubKey.toHex())
+                .put("tweakHex", u.tweak.toHex())
+                .put("k", u.k)
+                .put("blockHeight", u.blockHeight)
+        }))
+        wallet.raw.put("spScanTipHeight", wallet.spScanTipHeight)
         val serialized = wallet.raw.toString(2)
         walletFile.writeBytes(WalletEncryption.encrypt(serialized))
         cachedRawJson = serialized
@@ -298,6 +332,23 @@ object WalletStorage {
         val keys = (0 until current.length()).mapTo(LinkedHashSet()) { current.getString(it) }
         if (frozen) keys.add(key) else keys.remove(key)
         wallet.raw.put("frozenUtxos", org.json.JSONArray(keys))
+        saveLocked(wallet)
+    }
+
+    /**
+     * Mescla UTXOs SP recém-CONFIRMADOS (ver SilentPaymentsConfirmer — nunca
+     * chame isto com candidatos ainda não confirmados contra uma fonte
+     * própria) na lista persistida, deduplicando por "txid:vout", e avança
+     * spScanTipHeight — mesma seção crítica load→muta→save das outras
+     * operações aqui, pra um scan e uma troca de carteira concorrentes
+     * nunca se pisarem.
+     */
+    fun addSilentPaymentUtxos(newUtxos: List<SilentPaymentsConfirmer.ConfirmedUtxo>, newScanTipHeight: Long): Unit = synchronized(lock) {
+        val wallet = loadLocked()
+        val existingKeys = wallet.spUtxos.mapTo(mutableSetOf()) { "${it.txid}:${it.vout}" }
+        val toAdd = newUtxos.filterNot { "${it.txid}:${it.vout}" in existingKeys }
+        wallet.spUtxos = wallet.spUtxos + toAdd
+        wallet.spScanTipHeight = maxOf(wallet.spScanTipHeight, newScanTipHeight)
         saveLocked(wallet)
     }
 

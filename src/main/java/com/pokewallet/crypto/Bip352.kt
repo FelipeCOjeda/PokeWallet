@@ -167,6 +167,18 @@ object Bip352 {
         return Secp256k1.pointMultiply(sumOfInputPublicKeys, combinedScalar)
     }
 
+    /**
+     * Mesmo ecdh_shared_secret de [receiverSharedSecret], mas pra quando um
+     * indexador (ex.: blindbit-oracle, ver
+     * [com.pokewallet.network.BlindBitOracleClient]) já pré-computou
+     * ``input_hash · A`` do lado dele e manda só esse ponto de 33 bytes —
+     * evita o cliente precisar buscar/parsear os inputs de cada tx pra
+     * calcular ``A``/outpoint_L sozinho. Matematicamente idêntico por
+     * associatividade escalar: ``b_scan·(h·A) == (b_scan·h)·A``.
+     */
+    fun receiverSharedSecretFromPrecomputedTweak(scanPrivateKey: ByteArray, precomputedInputHashTimesA: ByteArray): ByteArray =
+        Secp256k1.pointMultiply(precomputedInputHashTimesA, scanPrivateKey)
+
     /** d = (b_spend + t_k) mod n, ajustado pra Y par — chave privada real
      *  que gasta o output P_k. */
     fun spendingPrivateKey(spendPrivateKey: ByteArray, sharedSecret: ByteArray, k: Int): ByteArray {

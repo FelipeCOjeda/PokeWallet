@@ -88,6 +88,21 @@ data class WalletData(
     val frozenUtxoKeys: Set<String>,
 
     // -----------------------------
+    // Silent Payments (BIP-352, Fase 3) — UTXOs recebidos via endereço SP,
+    // já CONFIRMADOS contra uma fonte própria (nunca só o filtro de 8
+    // bytes do oracle, ver SilentPaymentsConfirmer). Ao contrário dos
+    // UTXOs normais (recalculáveis de graça reescaneando os endereços
+    // derivados), um UTXO SP não vem de um endereço fixo — se não
+    // persistir aqui, ele é irrecuperável sem re-escanear a blockchain
+    // inteira desde o genesis (não dá pra saber a altura em que chegou
+    // sem achar de novo). spScanTipHeight é até onde o scan SP já foi —
+    // mesmo papel de nextExternalIndex pro scan normal, mas em altura de
+    // bloco em vez de índice de endereço.
+    // -----------------------------
+    var spUtxos: List<com.pokewallet.network.SilentPaymentsConfirmer.ConfirmedUtxo> = emptyList(),
+    var spScanTipHeight: Long = 0L,
+
+    // -----------------------------
     // JSON bruto (preservação futura)
     // -----------------------------
     val raw: JSONObject
