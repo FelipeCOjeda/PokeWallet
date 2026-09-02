@@ -891,6 +891,32 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Endereço Silent Payments (BIP-352) único desta carteira — ao
+     * contrário de [getReceiveAddress], não avança índice nenhum (SP não
+     * usa cadeia de endereços, é uma chave scan/spend fixa por carteira).
+     * Só carteiras com seed neste aparelho — watch-only "somente scan"
+     * (chave de scan privada + spend pública) é a Fase 5 do plano, ainda
+     * não implementada.
+     */
+    fun getSilentPaymentAddress(): String? {
+        if (!walletSwitchMutex.tryLock()) return null
+        return try {
+            val wallet = WalletStorage.load()
+            if (wallet.isWatchOnly) return null
+            val seed = SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
+            try {
+                SilentPaymentAddressService.ownAddress(seed, wallet.network)
+            } finally {
+                seed.fill(0)
+            }
+        } catch (_: Exception) {
+            null
+        } finally {
+            walletSwitchMutex.unlock()
+        }
+    }
+
+    /**
      * "[fingerprint/purpose'/coin'/0']xpub" da carteira ativa — a mesma
      * string que dá pra colar (ou, quando o QR scanner for adicionado,
      * escanear) na tela de importação watch-only de outro aparelho.

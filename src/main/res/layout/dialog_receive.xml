@@ -71,7 +71,21 @@
             android:layout_height="56dp"
             android:text="@string/copy"
             android:textSize="12sp"
+            android:layout_marginBottom="12dp"
             app:backgroundTint="@color/green_status" />
+
+        <!-- Alterna entre o endereço normal (BIP84/86, com índice) e o
+             endereço Silent Payments (BIP-352, fixo, sem índice) — só
+             visível pra carteira com seed neste aparelho (watch-only ainda
+             não gera endereço SP, ver Fase 5 do plano). -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_toggle_silent_payment"
+            style="@style/Gameboy.Button"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="🔒 Ver endereço Silent Payments"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
     </LinearLayout>
 </ScrollView>

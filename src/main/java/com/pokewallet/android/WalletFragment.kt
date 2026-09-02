@@ -327,16 +327,28 @@ class WalletFragment : Fragment() {
 
     private fun showReceiveDialog(address: String, index: Int) {
         val dialogView = layoutInflater.inflate(R.layout.dialog_receive, null)
-        dialogView.findViewById<TextView>(R.id.tv_address).text       = address
-        dialogView.findViewById<TextView>(R.id.tv_address_index).text = "Índice de derivação: $index"
+        val tvAddress      = dialogView.findViewById<TextView>(R.id.tv_address)
+        val tvAddressIndex = dialogView.findViewById<TextView>(R.id.tv_address_index)
+        val imgQr          = dialogView.findViewById<android.widget.ImageView>(R.id.img_qr)
+        val btnToggleSp    = dialogView.findViewById<MaterialButton>(R.id.btn_toggle_silent_payment)
 
-        val imgQr = dialogView.findViewById<android.widget.ImageView>(R.id.img_qr)
-        try {
-            val sizePx = resources.displayMetrics.density.let { (220 * it).toInt() }
-            imgQr.setImageBitmap(generateQrBitmap(address, sizePx))
-        } catch (_: Exception) {
-            imgQr.visibility = View.GONE
+        fun renderQr(value: String) {
+            try {
+                val sizePx = resources.displayMetrics.density.let { (220 * it).toInt() }
+                imgQr.setImageBitmap(generateQrBitmap(value, sizePx))
+                imgQr.visibility = View.VISIBLE
+            } catch (_: Exception) {
+                imgQr.visibility = View.GONE
+            }
         }
+
+        // Estado do que está EXIBIDO agora no diálogo (normal vs. Silent
+        // Payments) — o botão de copiar sempre copia o que está na tela,
+        // não sempre o endereço normal.
+        var displayedAddress = address
+        tvAddress.text = address
+        tvAddressIndex.text = "Índice de derivação: $index"
+        renderQr(address)
 
         val dialog = AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
             .setView(dialogView)
@@ -344,9 +356,35 @@ class WalletFragment : Fragment() {
 
         dialogView.findViewById<MaterialButton>(R.id.btn_copy_address).setOnClickListener {
             val cm = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("Bitcoin address", address))
+            cm.setPrimaryClip(ClipData.newPlainText("Bitcoin address", displayedAddress))
             Toast.makeText(requireContext(), "Endereço copiado!", Toast.LENGTH_SHORT).show()
             dialog.dismiss()
+        }
+
+        // Endereço Silent Payments (BIP-352) — fixo por carteira, sem
+        // índice. Só carteira com seed neste aparelho (watch-only ainda
+        // não suporta, ver Fase 5 do plano); botão fica escondido nos
+        // outros casos.
+        val spAddress = viewModel.getSilentPaymentAddress()
+        if (spAddress != null) {
+            btnToggleSp.visibility = View.VISIBLE
+            var showingSp = false
+            btnToggleSp.setOnClickListener {
+                showingSp = !showingSp
+                if (showingSp) {
+                    displayedAddress = spAddress
+                    tvAddress.text = spAddress
+                    tvAddressIndex.text = "Silent Payments (BIP-352) — endereço fixo, não avança índice"
+                    renderQr(spAddress)
+                    btnToggleSp.text = "↩ Ver endereço normal"
+                } else {
+                    displayedAddress = address
+                    tvAddress.text = address
+                    tvAddressIndex.text = "Índice de derivação: $index"
+                    renderQr(address)
+                    btnToggleSp.text = "🔒 Ver endereço Silent Payments"
+                }
+            }
         }
 
         dialog.show()
