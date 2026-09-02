@@ -1668,13 +1668,32 @@ class WalletFragment : Fragment() {
         button.text = "🔄 Sincronizando…"
         lifecycleScope.launch {
             try {
-                val result = withContext(Dispatchers.IO) { viewModel.syncSilentPayments() }
+                val result = withContext(Dispatchers.IO) {
+                    viewModel.syncSilentPayments(onProgress = { height, start, end ->
+                        // Roda numa thread de background (IO) — post() pra
+                        // mexer na View com segurança. Progresso real em vez
+                        // de "Sincronizando…" parado: cada bloco custa uma
+                        // leva de matemática de curva elíptica, pode demorar
+                        // minutos num celular — sem isso não dá pra saber se
+                        // está devagar ou travado.
+                        val total = (end - start + 1).coerceAtLeast(1)
+                        val done  = (height - start + 1).coerceIn(0, total)
+                        val pct   = (done * 100 / total)
+                        button.post { button.text = "🔄 $done/$total ($pct%)" }
+                    })
+                }
                 updateSpOracleStatus(statusView)
                 val msg = if (result.confirmedUtxos.isEmpty())
                     "Sincronizado — nenhum pagamento Silent Payments novo encontrado."
                 else
                     "✅ ${result.confirmedUtxos.size} pagamento(s) Silent Payments encontrado(s)!"
                 Toast.makeText(requireContext(), msg, Toast.LENGTH_LONG).show()
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                Toast.makeText(
+                    requireContext(),
+                    "Sincronização cancelada por demorar demais (15 min) — tente de novo, ou configure um oracle mais rápido/próprio.",
+                    Toast.LENGTH_LONG
+                ).show()
             } catch (e: Exception) {
                 Toast.makeText(requireContext(), "Erro ao sincronizar Silent Payments: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {

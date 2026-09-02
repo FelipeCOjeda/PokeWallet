@@ -73,6 +73,9 @@ object BlockstreamClient : ChainDataSource {
         }
     }
 
+    override fun getTipHeight(network: Network): Long =
+        getWithFallback(network, "/blocks/tip/height").trim().toLong()
+
     override fun getFeeEstimates(network: Network): FeeEstimates {
         val json = JSONObject(getWithFallback(network, "/fee-estimates"))
         val byBlockTarget = sortedMapOf<Int, Double>()

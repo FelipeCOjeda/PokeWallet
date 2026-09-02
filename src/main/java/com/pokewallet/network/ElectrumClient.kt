@@ -163,6 +163,13 @@ class ElectrumClient(
         }
     }
 
+    // params vazio: sem args, subscribe também devolve o header atual —
+    // não cancela a "assinatura" (o servidor passaria a empurrar headers
+    // novos por essa conexão), mas como cada chamada aqui abre/reusa uma
+    // conexão de curta duração só pra requests síncronos, isso nunca é lido.
+    override fun getTipHeight(network: Network): Long =
+        call("blockchain.headers.subscribe", JSONArray()).getJSONObject("result").getLong("height")
+
     override fun getFeeEstimates(network: Network): FeeEstimates {
         // blockchain.estimatefee retorna BTC/kB pro alvo de blocos pedido;
         // -1 significa "não deu pra estimar" (node com pouco mempool/recém

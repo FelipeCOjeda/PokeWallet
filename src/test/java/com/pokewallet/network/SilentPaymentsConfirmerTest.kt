@@ -31,6 +31,7 @@ class SilentPaymentsConfirmerTest {
         override fun getFeeEstimates(network: Network) = throw UnsupportedOperationException()
         override fun broadcast(rawHex: String, network: Network) = throw UnsupportedOperationException()
         override fun getRawTx(txid: String, network: Network) = txsByTxid[txid] ?: error("txid não encontrado no fake: $txid")
+        override fun getTipHeight(network: Network) = throw UnsupportedOperationException()
     }
 
     @Test

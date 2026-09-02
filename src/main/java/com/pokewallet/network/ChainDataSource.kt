@@ -23,4 +23,15 @@ interface ChainDataSource {
      * que o txid é o hash da própria tx).
      */
     fun getRawTx(txid: String, network: Network): String
+
+    /**
+     * Altura do bloco mais recente da chain — usada pra gravar a "altura
+     * de nascimento" da carteira no momento da criação (ver WalletInit.kt),
+     * ponto de partida do primeiro scan de Silent Payments
+     * (SilentPaymentsSync.defaultStartHeight) em vez de um lookback
+     * arbitrário: uma carteira NOVA não pode ter recebido nada antes de
+     * existir, então não tem razão nenhuma pra escanear blocos anteriores
+     * à criação.
+     */
+    fun getTipHeight(network: Network): Long
 }

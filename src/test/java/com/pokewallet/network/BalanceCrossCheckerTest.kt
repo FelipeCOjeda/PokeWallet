@@ -20,6 +20,7 @@ class BalanceCrossCheckerTest {
         override fun getFeeEstimates(network: Network) = error("não usado neste teste")
         override fun broadcast(rawHex: String, network: Network) = error("não usado neste teste")
         override fun getRawTx(txid: String, network: Network) = error("não usado neste teste")
+        override fun getTipHeight(network: Network) = error("não usado neste teste")
     }
 
     private fun scanned(address: String, confirmedSats: Long) = WalletScanner.ScannedAddress(

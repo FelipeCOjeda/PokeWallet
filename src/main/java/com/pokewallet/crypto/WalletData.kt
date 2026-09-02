@@ -101,6 +101,18 @@ data class WalletData(
     // -----------------------------
     var spUtxos: List<com.pokewallet.network.SilentPaymentsConfirmer.ConfirmedUtxo> = emptyList(),
     var spScanTipHeight: Long = 0L,
+    /** Altura do bloco mais recente no momento em que esta carteira foi
+     *  CRIADA (não restaurada/importada — nesses casos fica null, porque
+     *  não há como saber a altura real de nascimento de uma seed que já
+     *  existia antes) — ver WalletViewModel.createWallet(). Ponto de
+     *  partida do primeiro scan de Silent Payments quando conhecida (2
+     *  blocos de margem, ver SilentPaymentsSync.sync): uma carteira nova
+     *  não pode ter recebido nada antes de existir, então não tem razão
+     *  nenhuma pra escanear anterior a isso — bem mais preciso e mais
+     *  rápido que o lookback fixo (DEFAULT_LOOKBACK_BLOCKS), que só serve
+     *  de fallback pra carteira restaurada/watch-only/antiga sem esse
+     *  campo. */
+    var birthHeight: Long? = null,
 
     // -----------------------------
     // JSON bruto (preservação futura)

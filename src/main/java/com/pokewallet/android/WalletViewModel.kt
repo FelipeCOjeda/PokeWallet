@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.util.Date
 
@@ -709,6 +710,23 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                         context, wallet.fingerprint,
                         resolveDisplayName(wallet.fingerprint, customName, wallet.passphrase)
                     )
+                    // Altura de nascimento — ponto de partida do primeiro scan
+                    // de Silent Payments (ver WalletData.birthHeight): uma
+                    // carteira RECÉM-CRIADA não pode ter recebido nada antes
+                    // de existir. Best-effort — se a rede falhar aqui, a
+                    // criação da carteira não pode travar por causa disso;
+                    // SilentPaymentsSync cai pro lookback fixo (mais lento,
+                    // mas ainda funciona) quando birthHeight fica null.
+                    withContext(Dispatchers.IO) {
+                        try {
+                            val tipHeight = NodePrefs.dataSource(context).getTipHeight(network)
+                            wallet.birthHeight = tipHeight
+                            WalletStorage.save(wallet)
+                        } catch (_: Exception) {
+                            // Sem rede/timeout no momento da criação — sem problema,
+                            // só fica sem o atalho (ver comentário acima).
+                        }
+                    }
                     // WalletInit.run() sempre cria carteira com seed — nunca watch-only.
                     _walletState.value = WalletState.Created(
                         mnemonic       = wallet.mnemonic!!.joinToString(" "),
@@ -927,55 +945,71 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Escaneia recebimento Silent Payments (BIP-352, Fase 3): descobre até
      * onde o oracle já indexou, escaneia [wallet.spScanTipHeight]+1 em
-     * diante (ou ~2000 blocos pra trás do tip, se for o primeiro scan desta
-     * carteira — decisão tomada com o usuário), CONFIRMA cada candidato
-     * contra a fonte de dados própria já configurada (Electrum/Blockstream,
-     * nunca só o filtro de 8 bytes do oracle — ver
+     * diante (ou [SilentPaymentsSync.DEFAULT_LOOKBACK_BLOCKS] blocos pra
+     * trás do tip, se for o primeiro scan desta carteira), CONFIRMA cada
+     * candidato contra a fonte de dados própria já configurada (Electrum/
+     * Blockstream, nunca só o filtro de 8 bytes do oracle — ver
      * [com.pokewallet.network.SilentPaymentsConfirmer]) e persiste os
      * confirmados. Só carteira com seed neste aparelho (mesma limitação de
      * [getSilentPaymentAddress] — watch-only "somente scan" é a Fase 5,
-     * ainda não implementada). Chamador decide quando/com que frequência
-     * chamar isso — ainda sem UI/gatilho automático (fica pro próximo
-     * passo do plano).
+     * ainda não implementada).
+     *
+     * [onProgress], se dado, é chamado depois de cada bloco processado
+     * (altura atual, início, fim do range) — a UI usa isso pra mostrar
+     * progresso real em vez de um "Sincronizando…" indefinido (cada bloco é
+     * uma leva de multiplicações de ponto de curva elíptica, pode
+     * legitimamente demorar num celular sem aceleração de hardware — sem
+     * progresso visível, não dá pra distinguir "lento mas funcionando" de
+     * "travado"). [timeoutMs] é uma rede de segurança: se o scan não
+     * terminar nesse tempo (rede/oracle travado de verdade), falha com erro
+     * claro em vez de ficar preso pra sempre segurando [walletSwitchMutex]
+     * (que bloquearia qualquer outra operação na carteira indefinidamente).
      */
-    suspend fun syncSilentPayments(): SilentPaymentsSync.SyncResult = walletSwitchMutex.withLock {
-        val wallet = WalletStorage.load()
-        require(!wallet.isWatchOnly) {
-            "Esta carteira é watch-only (sem seed neste aparelho) — scan de Silent Payments ainda exige a carteira com a seed."
-        }
-        // Mesmo colapso de getSilentPaymentAddress()/buildSignedTx() — ver
-        // nota lá sobre HRP consistente entre as fases.
-        val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
-        val context = getApplication<Application>()
-        val oracleUrl = BlindBitOraclePrefs.baseUrl(context, network)
-            ?: error("Nenhum host de oracle configurado pra esta rede — configure um manualmente (sem instância pública conhecida pra REGTEST).")
-        val dataSource = NodePrefs.dataSource(context)
-
-        val seed = SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
-        val scanPriv: ByteArray
-        val spendPub: ByteArray
-        try {
-            scanPriv = Bip352KeyDerivation.scanKey(seed, network).privateKey
-            spendPub = Secp256k1.publicKeyFromPrivate(Bip352KeyDerivation.spendKey(seed, network).privateKey)
-        } finally {
-            seed.fill(0)
-        }
-
-        try {
-            val result = SilentPaymentsSync.sync(
-                oracleBaseUrl         = oracleUrl,
-                dataSource            = dataSource,
-                network               = network,
-                scanPrivateKey        = scanPriv,
-                spendPubKey           = spendPub,
-                previousScanTipHeight = wallet.spScanTipHeight
-            )
-            if (result.confirmedUtxos.isNotEmpty() || result.newScanTipHeight != wallet.spScanTipHeight) {
-                WalletStorage.addSilentPaymentUtxos(result.confirmedUtxos, result.newScanTipHeight)
+    suspend fun syncSilentPayments(
+        onProgress: (height: Long, start: Long, end: Long) -> Unit = { _, _, _ -> },
+        timeoutMs: Long = 15 * 60_000L
+    ): SilentPaymentsSync.SyncResult = withTimeout(timeoutMs) {
+        walletSwitchMutex.withLock {
+            val wallet = WalletStorage.load()
+            require(!wallet.isWatchOnly) {
+                "Esta carteira é watch-only (sem seed neste aparelho) — scan de Silent Payments ainda exige a carteira com a seed."
             }
-            result
-        } finally {
-            scanPriv.fill(0)
+            // Mesmo colapso de getSilentPaymentAddress()/buildSignedTx() — ver
+            // nota lá sobre HRP consistente entre as fases.
+            val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
+            val context = getApplication<Application>()
+            val oracleUrl = BlindBitOraclePrefs.baseUrl(context, network)
+                ?: error("Nenhum host de oracle configurado pra esta rede — configure um manualmente (sem instância pública conhecida pra REGTEST).")
+            val dataSource = NodePrefs.dataSource(context)
+
+            val seed = SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
+            val scanPriv: ByteArray
+            val spendPub: ByteArray
+            try {
+                scanPriv = Bip352KeyDerivation.scanKey(seed, network).privateKey
+                spendPub = Secp256k1.publicKeyFromPrivate(Bip352KeyDerivation.spendKey(seed, network).privateKey)
+            } finally {
+                seed.fill(0)
+            }
+
+            try {
+                val result = SilentPaymentsSync.sync(
+                    oracleBaseUrl         = oracleUrl,
+                    dataSource            = dataSource,
+                    network               = network,
+                    scanPrivateKey        = scanPriv,
+                    spendPubKey           = spendPub,
+                    previousScanTipHeight = wallet.spScanTipHeight,
+                    birthHeight           = wallet.birthHeight,
+                    onBlockScanned        = onProgress
+                )
+                if (result.confirmedUtxos.isNotEmpty() || result.newScanTipHeight != wallet.spScanTipHeight) {
+                    WalletStorage.addSilentPaymentUtxos(result.confirmedUtxos, result.newScanTipHeight)
+                }
+                result
+            } finally {
+                scanPriv.fill(0)
+            }
         }
     }
 

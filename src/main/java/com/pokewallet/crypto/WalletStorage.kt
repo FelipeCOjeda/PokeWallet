@@ -230,6 +230,7 @@ object WalletStorage {
             frozenUtxoKeys     = frozenKeys,
             spUtxos            = spUtxos,
             spScanTipHeight    = json.optLong("spScanTipHeight", 0L),
+            birthHeight        = if (json.has("birthHeight") && !json.isNull("birthHeight")) json.getLong("birthHeight") else null,
             raw                = json
         )
     }
@@ -257,6 +258,7 @@ object WalletStorage {
                 .put("blockHeight", u.blockHeight)
         }))
         wallet.raw.put("spScanTipHeight", wallet.spScanTipHeight)
+        wallet.raw.put("birthHeight", wallet.birthHeight ?: JSONObject.NULL)
         val serialized = wallet.raw.toString(2)
         walletFile.writeBytes(WalletEncryption.encrypt(serialized))
         cachedRawJson = serialized

@@ -33,6 +33,7 @@ class UtxoValueVerifierTest {
         override fun getUtxos(address: String, network: Network) = error("não usado neste teste")
         override fun getFeeEstimates(network: Network) = error("não usado neste teste")
         override fun broadcast(rawHex: String, network: Network) = error("não usado neste teste")
+        override fun getTipHeight(network: Network) = error("não usado neste teste")
         override fun getRawTx(txid: String, network: Network): String =
             rawTxByTxid[txid] ?: error("txid não conhecido pelo fake: $txid")
     }
