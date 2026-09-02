@@ -1,6 +1,7 @@
 package com.pokewallet.crypto
 
 import com.pokewallet.network.RemoteUtxo
+import com.pokewallet.network.SilentPaymentsConfirmer
 import com.pokewallet.network.WalletScanner
 
 /**
@@ -16,8 +17,35 @@ import com.pokewallet.network.WalletScanner
  */
 object SpendResolver {
 
-    /** Um UTXO candidato a ser gasto, com o endereço (chain/index) que o controla. */
-    data class Candidate(val chain: Int, val index: Int, val utxo: RemoteUtxo)
+    /**
+     * Um UTXO candidato a ser gasto — normalmente pelo endereço (chain/
+     * index) que o controla, OU (quando [silentPaymentTweak] não é null)
+     * um UTXO Silent Payments (BIP-352): [chain]/[index] são só
+     * placeholder (-1) nesse caso, ignorados por quem deriva a chave — a
+     * derivação usa [silentPaymentTweak] em vez de HD chain/index (ver
+     * [TxAssembler.deriveSilentPaymentSpendableInput]).
+     */
+    data class Candidate(
+        val chain: Int,
+        val index: Int,
+        val utxo: RemoteUtxo,
+        val silentPaymentTweak: ByteArray? = null
+    ) {
+        companion object {
+            fun forSilentPayment(spUtxo: SilentPaymentsConfirmer.ConfirmedUtxo): Candidate = Candidate(
+                chain = -1,
+                index = -1,
+                utxo  = RemoteUtxo(
+                    txid        = spUtxo.txid,
+                    vout        = spUtxo.vout,
+                    valueSats   = spUtxo.valueSats,
+                    confirmed   = true,
+                    blockHeight = spUtxo.blockHeight.toInt()
+                ),
+                silentPaymentTweak = spUtxo.tweak
+            )
+        }
+    }
 
     data class Resolved(
         val chosen: List<Candidate>,
@@ -26,18 +54,30 @@ object SpendResolver {
         val changeValue: Long?
     )
 
-    /** Endereços escaneados -> candidatos, com os UTXOs congelados (tela de
-     *  UTXOs) já removidos — congelar promete proteção na UI, então tem
-     *  que valer pra qualquer caminho que resolve um envio. */
+    /**
+     * Endereços escaneados -> candidatos, com os UTXOs congelados (tela de
+     * UTXOs) já removidos — congelar promete proteção na UI, então tem
+     * que valer pra qualquer caminho que resolve um envio. [silentPaymentUtxos]
+     * (opcional) adiciona os UTXOs Silent Payments já CONFIRMADOS da
+     * carteira (ver WalletData.spUtxos) — só quem chama com uma carteira
+     * que sabe gastá-los (seed disponível, ver WalletViewModel.buildSignedTx)
+     * deveria passar isso; watch-only nunca deveria (não tem a spend key).
+     */
     fun candidatesFrom(
         addressesWithFunds: List<WalletScanner.ScannedAddress>,
-        frozenUtxoKeys: Set<String>
-    ): List<Candidate> =
-        addressesWithFunds.flatMap { addr ->
+        frozenUtxoKeys: Set<String>,
+        silentPaymentUtxos: List<SilentPaymentsConfirmer.ConfirmedUtxo> = emptyList()
+    ): List<Candidate> {
+        val derived = addressesWithFunds.flatMap { addr ->
             addr.utxos
                 .filterNot { frozenUtxoKeys.contains("${it.txid}:${it.vout}") }
                 .map { Candidate(addr.chain, addr.index, it) }
         }
+        val sp = silentPaymentUtxos
+            .filterNot { frozenUtxoKeys.contains("${it.txid}:${it.vout}") }
+            .map { Candidate.forSilentPayment(it) }
+        return derived + sp
+    }
 
     /**
      * Escolhe quais candidatos entram na tx: seleção manual (Fase B3, usa

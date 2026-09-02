@@ -181,8 +181,28 @@ object Bip352 {
 
     /** d = (b_spend + t_k) mod n, ajustado pra Y par — chave privada real
      *  que gasta o output P_k. */
-    fun spendingPrivateKey(spendPrivateKey: ByteArray, sharedSecret: ByteArray, k: Int): ByteArray {
-        val tweak = outputTweak(sharedSecret, k)
+    fun spendingPrivateKey(spendPrivateKey: ByteArray, sharedSecret: ByteArray, k: Int): ByteArray =
+        spendingPrivateKeyFromTweak(spendPrivateKey, outputTweak(sharedSecret, k))
+
+    /**
+     * Mesma fórmula de [spendingPrivateKey], mas quando já se tem t_k
+     * calculado de antemão (persistido — ver
+     * [com.pokewallet.network.SilentPaymentsConfirmer.ConfirmedUtxo.tweak])
+     * em vez do shared secret + k. A wallet persiste só t_k (não o shared
+     * secret inteiro), então gastar um UTXO SP depois do scan sempre passa
+     * por aqui, não por [spendingPrivateKey].
+     *
+     * ATENÇÃO — o ``d`` retornado é a chave de assinatura FINAL pro output
+     * P2TR, pronta pra usar direto no Schnorr sign: diferente de um
+     * endereço Taproot normal (BIP86), um output Silent Payments NÃO leva
+     * o tweak adicional do BIP341 (`TapTweak`) em cima — `P_k` já É a
+     * output key (ver [outputPublicKey]), sem internal key/tweak
+     * separados. Aplicar [Secp256k1.taprootTweakPrivateKey] em cima disto
+     * por engano assinaria pra uma chave ERRADA (a tx seria rejeitada pela
+     * rede, não roubaria fundos, mas fundo perdido de qualquer jeito se a
+     * fee já tiver sido paga e o usuário assumir que enviou).
+     */
+    fun spendingPrivateKeyFromTweak(spendPrivateKey: ByteArray, tweak: ByteArray): ByteArray {
         val d0 = Secp256k1.addScalars(spendPrivateKey, tweak)
         return Secp256k1.evenYPrivateKey(d0)
     }

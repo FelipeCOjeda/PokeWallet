@@ -16,7 +16,12 @@ object TxAssembler {
         val valueSats: Long,
         val scriptPubKey: ByteArray,
         val privateKey: ByteArray,
-        val pubKey: ByteArray
+        val pubKey: ByteArray,
+        /** true só pra UTXOs Silent Payments (BIP-352) — [privateKey] já é
+         *  a chave de assinatura FINAL (ver
+         *  [Bip352.spendingPrivateKeyFromTweak]), sem o tweak adicional do
+         *  BIP341 que um endereço Taproot normal (BIP86) leva. */
+        val skipTaprootTweak: Boolean = false
     )
 
     /** privKey, pubKey, scriptPubKey pro endereço (chain,index) — mesmo
@@ -39,9 +44,18 @@ object TxAssembler {
         return Triple(pk, pub, script)
     }
 
-    /** Deriva a chave de gasto de cada UTXO escolhido — uma vez por
-     *  endereço (chain,index) mesmo que ele tenha múltiplos UTXOs, evitando
-     *  derivação repetida. */
+    /**
+     * Deriva a chave de gasto de cada UTXO escolhido — uma vez por
+     * endereço (chain,index) mesmo que ele tenha múltiplos UTXOs, evitando
+     * derivação repetida. Candidatos Silent Payments ([SpendResolver.
+     * Candidate.silentPaymentTweak] != null, ver
+     * [SpendResolver.candidatesFrom]) são desviados pra
+     * [deriveSilentPaymentSpendableInput] em vez da derivação HD normal —
+     * MISTURAR os dois tipos num mesmo [spendType] só funciona quando
+     * [spendType] é BIP86 (SP é sempre Taproot; um BIP84 misturado com SP
+     * exigiria witness heterogêneo por input, que [signAndFinalize] ainda
+     * não suporta — ver nota lá).
+     */
     fun deriveSpendableInputs(
         chosen: List<SpendResolver.Candidate>,
         seed: ByteArray,
@@ -49,19 +63,52 @@ object TxAssembler {
         spendType: SpendType
     ): List<SpendableInput> {
         val keyCache = mutableMapOf<Pair<Int, Int>, Triple<ByteArray, ByteArray, ByteArray>>()
+        val spSpendPrivateKey by lazy { Bip352KeyDerivation.spendKey(seed, network).privateKey }
         return chosen.map { c ->
-            val (privKey, pubKey, spk) = keyCache.getOrPut(c.chain to c.index) {
-                deriveKeyAndScript(seed, network, spendType, c.chain, c.index)
+            val tweak = c.silentPaymentTweak
+            if (tweak != null) {
+                deriveSilentPaymentSpendableInput(c.utxo, tweak, spSpendPrivateKey)
+            } else {
+                val (privKey, pubKey, spk) = keyCache.getOrPut(c.chain to c.index) {
+                    deriveKeyAndScript(seed, network, spendType, c.chain, c.index)
+                }
+                SpendableInput(
+                    txidLE       = c.utxo.txid.hexToBytes().reversedArray(),
+                    vout         = c.utxo.vout,
+                    valueSats    = c.utxo.valueSats,
+                    scriptPubKey = spk,
+                    privateKey   = privKey,
+                    pubKey       = pubKey
+                )
             }
-            SpendableInput(
-                txidLE       = c.utxo.txid.hexToBytes().reversedArray(),
-                vout         = c.utxo.vout,
-                valueSats    = c.utxo.valueSats,
-                scriptPubKey = spk,
-                privateKey   = privKey,
-                pubKey       = pubKey
-            )
         }
+    }
+
+    /**
+     * Deriva o input pronto pra assinar de um UTXO Silent Payments (BIP-352)
+     * já CONFIRMADO — [outputXOnlyPubKey]/[valueSats]/[txid]/[vout] vêm de
+     * [com.pokewallet.network.SilentPaymentsConfirmer.ConfirmedUtxo] (via
+     * [SpendResolver.Candidate.utxo]/[SpendResolver.Candidate.forSilentPayment]).
+     * [spendPrivateKey] é a SPEND key da carteira ([Bip352KeyDerivation.
+     * spendKey]), não a chave HD normal — SP usa uma chave fixa por
+     * carteira, não uma por (chain,index).
+     */
+    fun deriveSilentPaymentSpendableInput(
+        utxo: com.pokewallet.network.RemoteUtxo,
+        tweak: ByteArray,
+        spendPrivateKey: ByteArray
+    ): SpendableInput {
+        val d = Bip352.spendingPrivateKeyFromTweak(spendPrivateKey, tweak)
+        val xOnly = Secp256k1.xOnlyPublicKeyFromPrivate(d)
+        return SpendableInput(
+            txidLE           = utxo.txid.hexToBytes().reversedArray(),
+            vout             = utxo.vout,
+            valueSats        = utxo.valueSats,
+            scriptPubKey     = byteArrayOf(0x51, 0x20) + xOnly,
+            privateKey       = d,
+            pubKey           = Secp256k1.publicKeyFromPrivate(d),
+            skipTaprootTweak = true
+        )
     }
 
     /**
@@ -179,14 +226,25 @@ object TxAssembler {
                         inputIndex = i,
                         utxos      = utxoTxOuts
                     )
-                    val tweakedPrivKey = Secp256k1.taprootTweakPrivateKey(s.privateKey)
+                    // UTXO Silent Payments (BIP-352): s.privateKey JÁ é a
+                    // chave de assinatura final (Bip352.spendingPrivateKeyFromTweak)
+                    // — aplicar o tweak do BIP341 em cima assinaria pra uma
+                    // chave errada (ver doc de skipTaprootTweak/
+                    // spendingPrivateKeyFromTweak).
+                    val tweakedPrivKey = if (s.skipTaprootTweak) s.privateKey else Secp256k1.taprootTweakPrivateKey(s.privateKey)
                     try {
                         psbt.inputs[i].tapKeySig = SchnorrSigner.sign(
                             msg32     = sighash,
                             privKey32 = tweakedPrivKey
                         )
                     } finally {
-                        tweakedPrivKey.fill(0)
+                        // Só zera aqui se for uma cópia TEMPORÁRIA separada
+                        // de s.privateKey (a tweak normal aloca uma nova) —
+                        // quando skipTaprootTweak, é a MESMA referência de
+                        // s.privateKey, zerada já pelo spendable.forEach
+                        // logo abaixo (zerar duas vezes seria só redundante,
+                        // não incorreto, mas melhor não confundir intenção).
+                        if (!s.skipTaprootTweak) tweakedPrivKey.fill(0)
                     }
                 }
                 spendable.forEach { it.privateKey.fill(0) }

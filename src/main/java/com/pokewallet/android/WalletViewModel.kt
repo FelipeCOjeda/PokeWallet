@@ -1098,12 +1098,19 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
      * precisa de índice/endereço derivado ao vivo como a de endereços,
      * só o que o scan já encontrou.
      */
+    /**
+     * UTXOs derivados normalmente + UTXOs Silent Payments (BIP-352), estes
+     * últimos SÓ quando a carteira é BIP86 — exatamente a mesma condição
+     * que os torna GASTÁVEIS (ver resolveSpend()/SpendResolver.candidatesFrom):
+     * mostrar sem poder gastar (BIP84) seria mais confuso que não mostrar.
+     * UtxoRow.chain = -1 sinaliza "é SP" pro renderer da UI (WalletFragment).
+     */
     fun getUtxoList(): List<UtxoRow>? {
         if (!walletSwitchMutex.tryLock()) return null
         return try {
             val wallet = WalletStorage.load()
-            val scan = lastScanResult ?: return emptyList()
-            scan.addressesWithFunds.flatMap { addr ->
+            val scan = lastScanResult
+            val derived = scan?.addressesWithFunds?.flatMap { addr ->
                 addr.utxos.map { utxo ->
                     val key = "${utxo.txid}:${utxo.vout}"
                     UtxoRow(
@@ -1117,7 +1124,25 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                         frozen    = wallet.frozenUtxoKeys.contains(key)
                     )
                 }
-            }.sortedByDescending { it.valueSats }
+            } ?: emptyList()
+
+            val silentPayments = if (wallet.spendType == SpendType.BIP86) {
+                wallet.spUtxos.map { spUtxo ->
+                    val key = "${spUtxo.txid}:${spUtxo.vout}"
+                    UtxoRow(
+                        txid      = spUtxo.txid,
+                        vout      = spUtxo.vout,
+                        valueSats = spUtxo.valueSats,
+                        confirmed = true,
+                        address   = "Silent Payments",
+                        chain     = -1,
+                        index     = -1,
+                        frozen    = wallet.frozenUtxoKeys.contains(key)
+                    )
+                }
+            } else emptyList()
+
+            (derived + silentPayments).sortedByDescending { it.valueSats }
         } catch (_: Exception) {
             null
         } finally {
@@ -1489,7 +1514,16 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         // UTXO congelado (tela de UTXOs) nunca entra num envio, automático ou
         // manual — congelar promete proteção na UI, então tem que valer pra
         // qualquer caminho que chega aqui.
-        val candidates = SpendResolver.candidatesFrom(scanResult.addressesWithFunds, wallet.frozenUtxoKeys)
+        //
+        // UTXOs Silent Payments (wallet.spUtxos) só entram como candidatos
+        // quando: (1) tem seed (watch-only não sabe derivar a chave de
+        // gasto SP, isso é a Fase 5) e (2) a carteira é BIP86 — SP é
+        // SEMPRE Taproot, e signAndFinalize() ainda assina a tx inteira
+        // com UM tipo de witness só; misturar SP com UTXOs BIP84 (SegWit
+        // v0) precisaria de um assinador com witness heterogêneo por
+        // input, que não existe ainda (ver TxAssembler.deriveSpendableInputs).
+        val silentPaymentCandidates = if (seed != null && spendType == SpendType.BIP86) wallet.spUtxos else emptyList()
+        val candidates = SpendResolver.candidatesFrom(scanResult.addressesWithFunds, wallet.frozenUtxoKeys, silentPaymentCandidates)
         if (candidates.isEmpty()) {
             error("Todos os UTXOs disponíveis estão congelados — descongele pelo menos um pra enviar.")
         }

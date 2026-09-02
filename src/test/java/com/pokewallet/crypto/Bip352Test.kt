@@ -210,4 +210,45 @@ class Bip352Test {
         val actual = Bip352.receiverSharedSecretFromPrecomputedTweak(scanPrivKey, precomputedTweak)
         assertEquals(expected.toHex(), actual.toHex())
     }
+
+    // -------------------------------------------------------------
+    // spendingPrivateKeyFromTweak (Fase 3, lado de gasto): a wallet só
+    // persiste t_k (não o shared secret inteiro, ver
+    // SilentPaymentsConfirmer.ConfirmedUtxo), então gastar depois do scan
+    // sempre passa por aqui — tem que dar EXATAMENTE a mesma chave que
+    // spendingPrivateKey(spendPriv, sharedSecret, k) calculada do zero.
+    // -------------------------------------------------------------
+
+    @Test
+    fun `spendingPrivateKeyFromTweak bate com spendingPrivateKey calculado do shared secret`() {
+        val spendPrivKey = "1d37787c2b7116ee983e9f9c13269df29091b391c04db94239e0d2bc2182c3bf".hexToBytes()
+        val sharedSecret = "028158aff7d61ea66b2fa7f555bc3c5937d1debbde16423d630f9aa7943e14d80d".hexToBytes()
+
+        val expected = Bip352.spendingPrivateKey(spendPrivKey, sharedSecret, 0)
+
+        val tweak = Bip352.outputTweak(sharedSecret, 0)
+        val actual = Bip352.spendingPrivateKeyFromTweak(spendPrivKey, tweak)
+
+        assertEquals(expected.toHex(), actual.toHex())
+    }
+
+    @Test
+    fun `d retornado por spendingPrivateKeyFromTweak produz exatamente o x-only pubkey do output`() {
+        // Confere a ponte matemática que TxAssembler.deriveSilentPaymentSpendableInput
+        // depende: d = spendingPrivateKeyFromTweak(...) tem que satisfazer
+        // x(d·G) == x(P_k) — P_k calculado independentemente via
+        // outputPublicKey (lado remetente), sem passar pela mesma função.
+        val spendPrivKey = "1d37787c2b7116ee983e9f9c13269df29091b391c04db94239e0d2bc2182c3bf".hexToBytes()
+        val spendPubKey  = Secp256k1.publicKeyFromPrivate(spendPrivKey)
+        val sharedSecret = "028158aff7d61ea66b2fa7f555bc3c5937d1debbde16423d630f9aa7943e14d80d".hexToBytes()
+
+        val pK = Bip352.outputPublicKey(spendPubKey, sharedSecret, 0)
+        val expectedXOnly = pK.copyOfRange(1, 33)
+
+        val tweak = Bip352.outputTweak(sharedSecret, 0)
+        val d = Bip352.spendingPrivateKeyFromTweak(spendPrivKey, tweak)
+        val actualXOnly = Secp256k1.xOnlyPublicKeyFromPrivate(d)
+
+        assertEquals(expectedXOnly.toHex(), actualXOnly.toHex())
+    }
 }

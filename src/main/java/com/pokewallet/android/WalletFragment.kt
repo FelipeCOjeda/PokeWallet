@@ -760,9 +760,18 @@ class WalletFragment : Fragment() {
         headerRow.addView(tvValue)
         headerRow.addView(tvStatus)
 
-        val chainLabel = if (utxo.chain == 0) "recebimento" else "troco"
+        // chain == -1 é o sinal de "UTXO Silent Payments" (ver
+        // WalletViewModel.getUtxoList) — não vem de um endereço
+        // derivado/chain/index normal, mostra um rótulo próprio em vez de
+        // truncar o texto placeholder do address como se fosse um endereço.
+        val sourceLabel = if (utxo.chain == -1) {
+            "🔒 Silent Payments"
+        } else {
+            val chainLabel = if (utxo.chain == 0) "recebimento" else "troco"
+            "${utxo.address.take(12)}…${utxo.address.takeLast(6)} ($chainLabel #${utxo.index})"
+        }
         val tvSource = TextView(requireContext()).apply {
-            text     = "${utxo.address.take(12)}…${utxo.address.takeLast(6)} ($chainLabel #${utxo.index})"
+            text     = sourceLabel
             textSize = 11f
             typeface = Typeface.MONOSPACE
             setTextColor(ContextCompat.getColor(requireContext(), R.color.gb_border_soft))
@@ -819,9 +828,18 @@ class WalletFragment : Fragment() {
         headerRow.addView(tvValue)
         headerRow.addView(tvStatus)
 
-        val chainLabel = if (utxo.chain == 0) "recebimento" else "troco"
+        // chain == -1 é o sinal de "UTXO Silent Payments" (ver
+        // WalletViewModel.getUtxoList) — não vem de um endereço
+        // derivado/chain/index normal, mostra um rótulo próprio em vez de
+        // truncar o texto placeholder do address como se fosse um endereço.
+        val sourceLabel = if (utxo.chain == -1) {
+            "🔒 Silent Payments"
+        } else {
+            val chainLabel = if (utxo.chain == 0) "recebimento" else "troco"
+            "${utxo.address.take(12)}…${utxo.address.takeLast(6)} ($chainLabel #${utxo.index})"
+        }
         val tvSource = TextView(requireContext()).apply {
-            text     = "${utxo.address.take(12)}…${utxo.address.takeLast(6)} ($chainLabel #${utxo.index})"
+            text     = sourceLabel
             textSize = 11f
             typeface = Typeface.MONOSPACE
             setTextColor(ContextCompat.getColor(requireContext(), R.color.gb_border_soft))
