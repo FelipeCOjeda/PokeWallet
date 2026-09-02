@@ -132,7 +132,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Native SegWit (bc1q...) é o padrão mais compatível. Taproot (bc1p...) é o mais novo, com taxas menores em gastos simples."
+            android:text="Native SegWit (bc1q...) é o padrão mais compatível. Taproot (bc1p...) é o mais novo, com taxas menores em gastos simples e necessário pra usar Silent Payments (endereço privado que não expõe seu histórico ao remetente)."
             android:textSize="11sp"
             android:textColor="@color/gb_border_soft"
             android:lineSpacingExtra="2dp"
