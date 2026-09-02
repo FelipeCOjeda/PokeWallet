@@ -1691,18 +1691,35 @@ class WalletFragment : Fragment() {
                     "✅ ${result.confirmedUtxos.size} pagamento(s) Silent Payments encontrado(s)!"
                 Toast.makeText(requireContext(), msg, Toast.LENGTH_LONG).show()
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                Toast.makeText(
-                    requireContext(),
-                    "Sincronização cancelada por demorar demais (15 min) — tente de novo, ou configure um oracle mais rápido/próprio.",
-                    Toast.LENGTH_LONG
-                ).show()
+                showSpSyncErrorDialog("Sincronização cancelada por demorar demais (15 min) — tente de novo, ou configure um oracle mais rápido/próprio.")
             } catch (e: Exception) {
-                Toast.makeText(requireContext(), "Erro ao sincronizar Silent Payments: ${e.message}", Toast.LENGTH_LONG).show()
+                // Diálogo em vez de Toast: mensagens de erro aqui podem ser
+                // longas (ex.: rede errada do oracle) e um Toast some rápido
+                // demais pra dar tempo de ler — achado real com o usuário
+                // ("não dá pra ler o resto").
+                showSpSyncErrorDialog(e.message ?: "Erro desconhecido ao sincronizar Silent Payments.")
             } finally {
                 button.isEnabled = true
                 button.text = originalText
             }
         }
+    }
+
+    /** Mostra erro de sync SP num diálogo com texto SELECIONÁVEL (dá pra
+     *  copiar e colar em algum lugar pra compartilhar) — Toast some rápido
+     *  demais pra mensagens longas, ver nota em triggerSilentPaymentsSync. */
+    private fun showSpSyncErrorDialog(message: String) {
+        val tv = TextView(requireContext()).apply {
+            text = message
+            setTextIsSelectable(true)
+            setPadding((20 * resources.displayMetrics.density).toInt(), (16 * resources.displayMetrics.density).toInt(), (20 * resources.displayMetrics.density).toInt(), (16 * resources.displayMetrics.density).toInt())
+            setTextColor(ContextCompat.getColor(requireContext(), R.color.gb_border))
+        }
+        AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
+            .setTitle("⚠️ Erro ao sincronizar Silent Payments")
+            .setView(tv)
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     /** Configura o host:porta do proxy SOCKS do Orbot (Mochila, seção

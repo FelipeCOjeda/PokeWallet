@@ -45,7 +45,7 @@ object SilentPaymentsSync {
     fun matchesExpectedNetwork(expected: Network, oracleReportedNetwork: String): Boolean {
         val reported = oracleReportedNetwork.trim().lowercase()
         return when (expected) {
-            Network.MAINNET -> reported == "mainnet" || reported == "bitcoin"
+            Network.MAINNET -> reported == "mainnet" || reported == "bitcoin" || reported == "main"
             Network.TESTNET -> reported == "signet" || reported == "testnet"
             Network.REGTEST -> reported == "regtest"
         }

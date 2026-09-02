@@ -65,9 +65,12 @@ class SilentPaymentsSyncTest {
     // -------------------------------------------------------------
 
     @Test
-    fun `matchesExpectedNetwork aceita mainnet-bitcoin so pra Network MAINNET`() {
+    fun `matchesExpectedNetwork aceita mainnet-bitcoin-main so pra Network MAINNET`() {
         assertTrue(SilentPaymentsSync.matchesExpectedNetwork(Network.MAINNET, "mainnet"))
         assertTrue(SilentPaymentsSync.matchesExpectedNetwork(Network.MAINNET, "bitcoin"))
+        // oracle.setor.dev (produção) reporta "main", não "mainnet" — confirmado
+        // ao vivo nesta sessão (GetInfo real retornou network=main).
+        assertTrue(SilentPaymentsSync.matchesExpectedNetwork(Network.MAINNET, "main"))
         assertFalse(SilentPaymentsSync.matchesExpectedNetwork(Network.MAINNET, "signet"))
         assertFalse(SilentPaymentsSync.matchesExpectedNetwork(Network.MAINNET, "testnet"))
     }
