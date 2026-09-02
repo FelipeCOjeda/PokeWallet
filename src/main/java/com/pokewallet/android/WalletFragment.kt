@@ -1622,6 +1622,7 @@ class WalletFragment : Fragment() {
         }
 
         val dialogView   = layoutInflater.inflate(R.layout.dialog_sp_oracle, null)
+        val tvNetwork    = dialogView.findViewById<TextView>(R.id.tv_sp_oracle_network)
         val etHost       = dialogView.findViewById<TextInputEditText>(R.id.et_sp_oracle_host)
         val cbTls        = dialogView.findViewById<CheckBox>(R.id.cb_sp_oracle_tls)
         val tvTlsWarning = dialogView.findViewById<TextView>(R.id.tv_sp_oracle_tls_warning)
@@ -1629,6 +1630,7 @@ class WalletFragment : Fragment() {
         val btnCancel    = dialogView.findViewById<MaterialButton>(R.id.btn_cancel_sp_oracle)
         val btnConfirm   = dialogView.findViewById<MaterialButton>(R.id.btn_confirm_sp_oracle)
 
+        tvNetwork.text = "Configurando pra: ${status.network.name}"
         etHost.setText(status.oracleHost ?: "")
         cbTls.isChecked = status.oracleTlsEnabled
         tvTlsWarning.visibility = if (cbTls.isChecked) View.GONE else View.VISIBLE
@@ -1649,7 +1651,7 @@ class WalletFragment : Fragment() {
                 tvError.visibility = View.VISIBLE
                 return@setOnClickListener
             }
-            BlindBitOraclePrefs.save(context, host = host, useTls = cbTls.isChecked)
+            BlindBitOraclePrefs.save(context, network = status.network, host = host, useTls = cbTls.isChecked)
             updateSpOracleStatus(statusView)
             dialog.dismiss()
         }

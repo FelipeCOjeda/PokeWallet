@@ -29,11 +29,31 @@ object BlockstreamClient : ChainDataSource {
             // falharem os dois.
             "https://mempool.emzy.de/api"
         )
+        // Esta wallet não distingue testnet3 de signet no enum Network — os
+        // dois usam o mesmo valor TESTNET (mesmo HRP "tb", mesmo coinType,
+        // ver Network.kt). Isso É um problema de verdade pra Silent
+        // Payments: um usuário testando em signet (todo o plano de teste
+        // deste projeto usa signet, não testnet3 — ver BlindBitOraclePrefs)
+        // sem node Electrum próprio tinha a CONFIRMAÇÃO de um UTXO SP
+        // (SilentPaymentsConfirmer, busca a tx bruta por txid) falhando
+        // sempre — nenhuma das duas URLs testnet3 abaixo indexa blocos de
+        // signet, então um txid de signet nunca seria encontrado (404 nos
+        // dois, ou pior, uma demora perceptível como travamento até os dois
+        // fallbacks esgotarem — achado ao vivo nesta sessão testando um
+        // pagamento SP real). blockstream.info/signet/api testado e
+        // confirmado no ar (retorna a altura do tip corretamente) — vai
+        // PRIMEIRO porque é o caso de uso real predominante deste app hoje;
+        // mempool.space/testnet e blockstream.info/testnet continuam como
+        // fallback pra quem estiver de fato em testnet3.
         Network.TESTNET -> listOf(
+            "https://blockstream.info/signet/api",
             "https://mempool.space/testnet/api",
             "https://blockstream.info/testnet/api"
-            // mempool.emzy.de/testnet testado e fora do ar (502) no momento
-            // desta mudança — não incluído até confirmar estabilidade.
+            // mempool.space/signet testado nesta sessão e não respondeu
+            // (timeout de conexão) — não incluído até confirmar
+            // estabilidade; blockstream.info/signet já cobre o caso de uso.
+            // mempool.emzy.de/testnet testado e fora do ar (502) numa
+            // mudança anterior — não incluído até confirmar estabilidade.
         )
         Network.REGTEST -> error("REGTEST não possui API pública — use TESTNET ou MAINNET")
     }

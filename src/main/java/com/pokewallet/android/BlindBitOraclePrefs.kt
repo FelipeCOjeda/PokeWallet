@@ -27,7 +27,6 @@ import com.pokewallet.crypto.Network
 object BlindBitOraclePrefs {
 
     private const val PREFS_NAME = "pokewallet_prefs"
-    private const val KEY_HOST   = "blindbit_oracle_host"
     private const val KEY_TLS    = "blindbit_oracle_tls"
 
     const val DEFAULT_HOST_MAINNET = "oracle.setor.dev"
@@ -35,6 +34,21 @@ object BlindBitOraclePrefs {
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    /**
+     * Chave do host CUSTOMIZADO, uma POR REDE — bug real encontrado ao vivo
+     * nesta sessão (usuário testando em signet, depois indo pra mainnet
+     * com fundos reais): a versão anterior usava uma chave ÚNICA
+     * compartilhada entre redes, então só ABRIR o diálogo "Configurar
+     * Oracle" em signet e tocar "Salvar" (mesmo sem editar nada) fixava
+     * "signet.oracle.setor.dev" como host CUSTOMIZADO — que passava a
+     * vazar pro mainnet depois, porque [host] checava o customizado ANTES
+     * do padrão por rede. Scan de mainnet contra o oracle de signet não dá
+     * erro claro nenhum sozinho (por isso a checagem de rede em
+     * [com.pokewallet.network.SilentPaymentsSync] logo abaixo) — só nunca
+     * acha o pagamento real, silenciosamente.
+     */
+    private fun keyHostFor(network: Network) = "blindbit_oracle_host_${network.name}"
 
     /** Host padrão pra rede — null pra REGTEST (sem instância pública
      *  possível; precisa de host customizado, ex.: oracle próprio na LAN). */
@@ -44,10 +58,10 @@ object BlindBitOraclePrefs {
         Network.REGTEST -> null
     }
 
-    /** Host customizado salvo, se houver; senão o padrão da rede (pode
-     *  ser null em REGTEST sem host customizado). */
+    /** Host customizado salvo PRA ESSA REDE, se houver; senão o padrão da
+     *  rede (pode ser null em REGTEST sem host customizado). */
     fun host(context: Context, network: Network): String? =
-        prefs(context).getString(KEY_HOST, null)?.takeIf { it.isNotBlank() } ?: defaultHostFor(network)
+        prefs(context).getString(keyHostFor(network), null)?.takeIf { it.isNotBlank() } ?: defaultHostFor(network)
 
     /** Ligado por padrão — desligar é escolha explícita do usuário pra
      *  um oracle próprio sem certificado (mesmo raciocínio de
@@ -56,9 +70,9 @@ object BlindBitOraclePrefs {
      *  LAN confiável). */
     fun isTlsEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_TLS, true)
 
-    fun save(context: Context, host: String?, useTls: Boolean) {
+    fun save(context: Context, network: Network, host: String?, useTls: Boolean) {
         prefs(context).edit()
-            .putString(KEY_HOST, host?.trim()?.takeIf { it.isNotBlank() })
+            .putString(keyHostFor(network), host?.trim()?.takeIf { it.isNotBlank() })
             .putBoolean(KEY_TLS, useTls)
             .apply()
     }

@@ -1,6 +1,9 @@
 package com.pokewallet.network
 
+import com.pokewallet.crypto.Network
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Só [SilentPaymentsSync.defaultStartHeight] é testável sem rede real —
@@ -53,5 +56,31 @@ class SilentPaymentsSyncTest {
             0L,
             SilentPaymentsSync.resolveStartHeight(previousScanTipHeight = 0L, birthHeight = 1L, oracleTipHeight = 900_000L)
         )
+    }
+
+    // -------------------------------------------------------------
+    // matchesExpectedNetwork — trava de segurança contra escanear a chain
+    // ERRADA silenciosamente (bug real encontrado ao vivo nesta sessão:
+    // host de oracle vazando de signet pra mainnet entre redes).
+    // -------------------------------------------------------------
+
+    @Test
+    fun `matchesExpectedNetwork aceita mainnet-bitcoin so pra Network MAINNET`() {
+        assertTrue(SilentPaymentsSync.matchesExpectedNetwork(Network.MAINNET, "mainnet"))
+        assertTrue(SilentPaymentsSync.matchesExpectedNetwork(Network.MAINNET, "bitcoin"))
+        assertFalse(SilentPaymentsSync.matchesExpectedNetwork(Network.MAINNET, "signet"))
+        assertFalse(SilentPaymentsSync.matchesExpectedNetwork(Network.MAINNET, "testnet"))
+    }
+
+    @Test
+    fun `matchesExpectedNetwork aceita signet-testnet pra Network TESTNET, rejeita mainnet`() {
+        assertTrue(SilentPaymentsSync.matchesExpectedNetwork(Network.TESTNET, "signet"))
+        assertTrue(SilentPaymentsSync.matchesExpectedNetwork(Network.TESTNET, "testnet"))
+        assertFalse(SilentPaymentsSync.matchesExpectedNetwork(Network.TESTNET, "mainnet"))
+    }
+
+    @Test
+    fun `matchesExpectedNetwork nao liga pra maiusculas-minusculas nem espacos`() {
+        assertTrue(SilentPaymentsSync.matchesExpectedNetwork(Network.MAINNET, "  MainNet  "))
     }
 }

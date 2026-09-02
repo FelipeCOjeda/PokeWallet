@@ -21,6 +21,20 @@
             style="@style/Gameboy.Title"
             android:layout_marginBottom="8dp" />
 
+        <!-- Rede sendo configurada — cada rede tem seu PRÓPRIO host salvo
+             separadamente (bug real corrigido nesta sessão: configurar em
+             signet vazava pro mainnet depois, porque a versão anterior
+             usava uma chave só compartilhada entre redes). Deixa isso bem
+             visível pra nunca mais confundir qual rede está sendo salva. -->
+        <TextView
+            android:id="@+id/tv_sp_oracle_network"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="@color/accent_yellow"
+            android:layout_marginBottom="12dp" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

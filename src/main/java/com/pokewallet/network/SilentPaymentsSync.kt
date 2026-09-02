@@ -28,6 +28,29 @@ object SilentPaymentsSync {
 
     fun defaultStartHeight(oracleTipHeight: Long): Long = maxOf(0L, oracleTipHeight - DEFAULT_LOOKBACK_BLOCKS)
 
+    /**
+     * Confere que o "network" que o oracle reporta (GetInfo) bate com a
+     * rede esperada — trava de segurança contra o host errado ficar
+     * configurado pra rede errada (bug real encontrado ao vivo nesta
+     * sessão: BlindBitOraclePrefs guardava o host customizado numa chave
+     * ÚNICA compartilhada entre redes, então configurar em signet vazava
+     * pro mainnet depois — já corrigido lá, mas esta checagem garante que
+     * NENHUMA futura forma de host errado (erro de digitação, oracle
+     * próprio mal configurado, etc.) passe batido escaneando a chain
+     * ERRADA silenciosamente — o usuário só veria "nada encontrado" pra
+     * sempre, sem entender por quê. [Network.TESTNET] aceita tanto
+     * "signet" quanto "testnet" (esta wallet não distingue os dois, ver
+     * doc de [BlindBitOraclePrefs]).
+     */
+    fun matchesExpectedNetwork(expected: Network, oracleReportedNetwork: String): Boolean {
+        val reported = oracleReportedNetwork.trim().lowercase()
+        return when (expected) {
+            Network.MAINNET -> reported == "mainnet" || reported == "bitcoin"
+            Network.TESTNET -> reported == "signet" || reported == "testnet"
+            Network.REGTEST -> reported == "regtest"
+        }
+    }
+
     /** Margem de segurança pra trás da altura de nascimento — cobre
      *  reorg/latência entre "app leu a altura atual" e "bloco que criou a
      *  carteira foi minerado", não uma estimativa de precisão. */
@@ -102,7 +125,14 @@ object SilentPaymentsSync {
         birthHeight: Long? = null,
         onBlockScanned: (height: Long, start: Long, end: Long) -> Unit = { _, _, _ -> }
     ): SyncResult {
-        val tip = BlindBitOracleClient.getInfo(oracleBaseUrl).height
+        val info = BlindBitOracleClient.getInfo(oracleBaseUrl)
+        require(matchesExpectedNetwork(network, info.network)) {
+            "O oracle configurado ($oracleBaseUrl) está servindo dados de \"${info.network}\", mas esta carteira é " +
+                "${network.name} — provável host de oracle errado pra esta rede (confira em Configurar Oracle na " +
+                "Mochila). Scan cancelado por segurança: escanear a chain errada nunca encontraria o pagamento " +
+                "real, silenciosamente."
+        }
+        val tip = info.height
         val start = resolveStartHeight(previousScanTipHeight, birthHeight, tip)
         if (start > tip) return SyncResult(emptyList(), previousScanTipHeight)
 
