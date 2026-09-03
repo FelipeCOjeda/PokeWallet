@@ -1695,6 +1695,10 @@ class WalletFragment : Fragment() {
                 else
                     "✅ ${result.confirmedUtxos.size} pagamento(s) Silent Payments encontrado(s)!"
                 Toast.makeText(requireContext(), msg, Toast.LENGTH_LONG).show()
+                // UTXO SP novo muda o saldo total (ver WalletViewModel.doScan) —
+                // sem isso o usuário só veria o saldo atualizado trocando de
+                // aba ou esperando o próximo scan automático.
+                if (result.confirmedUtxos.isNotEmpty()) viewModel.refreshNow()
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 showSpSyncErrorDialog("Sincronização cancelada por demorar demais (15 min) — tente de novo, ou configure um oracle mais rápido/próprio.")
             } catch (e: Exception) {

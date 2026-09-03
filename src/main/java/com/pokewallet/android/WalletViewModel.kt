@@ -592,9 +592,16 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
 
-            val confirmedSats = result.addressesWithFunds.sumOf { it.stats.confirmedSats }
+            // UTXOs Silent Payments só entram no saldo pra carteira BIP86 —
+            // mesma condição de getUtxoList()/resolveSpend(): é exatamente
+            // o que os torna GASTÁVEIS. Achado real: saldo ficava sem
+            // contar fundos SP já confirmados e aparecendo na seleção
+            // manual de envio, só não no saldo total da tela principal.
+            val spUtxoSats = if (wallet.spendType == SpendType.BIP86) wallet.spUtxos.sumOf { it.valueSats } else 0L
+
+            val confirmedSats = result.addressesWithFunds.sumOf { it.stats.confirmedSats } + spUtxoSats
             val pendingSats   = result.addressesWithFunds.sumOf { it.stats.pendingSats }
-            val utxoCount     = result.addressesWithFunds.sumOf { it.utxos.size }
+            val utxoCount     = result.addressesWithFunds.sumOf { it.utxos.size } + (if (wallet.spendType == SpendType.BIP86) wallet.spUtxos.size else 0)
             val scanTimeMs    = System.currentTimeMillis()
 
             withContext(Dispatchers.IO) {
@@ -1553,12 +1560,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         seed: ByteArray? = null
     ): SpendResolver.Resolved {
         val scanResult = scanForSend(xpub, network, spendType)
-        if (scanResult.totalSats == 0L) error("Saldo zero — nada para enviar.")
 
-        // UTXO congelado (tela de UTXOs) nunca entra num envio, automático ou
-        // manual — congelar promete proteção na UI, então tem que valer pra
-        // qualquer caminho que chega aqui.
-        //
         // UTXOs Silent Payments (wallet.spUtxos) só entram como candidatos
         // quando: (1) tem seed (watch-only não sabe derivar a chave de
         // gasto SP, isso é a Fase 5) e (2) a carteira é BIP86 — SP é
@@ -1567,6 +1569,19 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         // v0) precisaria de um assinador com witness heterogêneo por
         // input, que não existe ainda (ver TxAssembler.deriveSpendableInputs).
         val silentPaymentCandidates = if (seed != null && spendType == SpendType.BIP86) wallet.spUtxos else emptyList()
+
+        // scanResult.totalSats só conta UTXOs normais (BIP84/86 derivados) —
+        // achado real: uma carteira só com saldo em UTXOs Silent Payments
+        // batia nesse erro mesmo com o UTXO SP selecionado manualmente na
+        // tela de envio, porque essa checagem não sabia que esse saldo
+        // existia.
+        if (scanResult.totalSats + silentPaymentCandidates.sumOf { it.valueSats } == 0L) {
+            error("Saldo zero — nada para enviar.")
+        }
+
+        // UTXO congelado (tela de UTXOs) nunca entra num envio, automático ou
+        // manual — congelar promete proteção na UI, então tem que valer pra
+        // qualquer caminho que chega aqui.
         val candidates = SpendResolver.candidatesFrom(scanResult.addressesWithFunds, wallet.frozenUtxoKeys, silentPaymentCandidates)
         if (candidates.isEmpty()) {
             error("Todos os UTXOs disponíveis estão congelados — descongele pelo menos um pra enviar.")
