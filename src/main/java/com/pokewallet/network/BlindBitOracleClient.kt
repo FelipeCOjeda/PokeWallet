@@ -23,11 +23,21 @@ import java.util.concurrent.TimeUnit
  * "h2" na porta 443 dos dois hosts): `oracle.setor.dev` (mainnet) e
  * `signet.oracle.setor.dev` (signet) — ver [com.pokewallet.android.BlindBitOraclePrefs].
  *
- * Convenções de byte do próprio oracle (`internal/server/GRPC.md` do
- * repo): block hash e txid vêm em LITTLE-ENDIAN — já no formato interno
- * que esta wallet usa em outpoint/txidLE em toda parte, SEM reversão
- * aqui (só reverte na hora de EXIBIR pro usuário, como em qualquer outro
- * lugar do app). "Tweak" é uma pubkey comprimida de 33 bytes — o servidor
+ * Convenções de byte do próprio oracle: a doc do repo (`internal/server/
+ * GRPC.md`) afirma que block hash e txid vêm em LITTLE-ENDIAN, mas isso
+ * está ERRADO na prática — achado real ao vivo nesta sessão (confirmação
+ * de UTXO SP dando 404 em dois provedores independentes; comparação
+ * byte-a-byte contra o hash de bloco REAL do Blockstream provou que o
+ * oracle manda os bytes já no formato de EXIBIÇÃO — big-endian, o mesmo
+ * hex que aparece em qualquer block explorer — sem reversão nenhuma). O
+ * `.reversedArray()` logo abaixo, na hora de montar [BlockScanData]/
+ * [TxTweakItem], CORRIGE isso pro formato LE interno de verdade — mesma
+ * convenção que `txidLE` tem em TODO O RESTO do app (ex.: TxAssembler,
+ * SendCommand: sempre `hexToBytes(txidExibido).reversedArray()`). Sem essa
+ * correção aqui, tanto o hash de bloco quanto o txid ficavam com os bytes
+ * ao contrário, e a confirmação (que reverte de novo pra exibir/consultar)
+ * acabava consultando um txid que nunca existiu. "Tweak" é uma pubkey
+ * comprimida de 33 bytes — o servidor
  * já pré-multiplica `input_hash · A` (soma das pubkeys dos inputs
  * elegíveis) do lado dele, o que evita o cliente precisar buscar/parsear
  * os inputs de cada tx: o destinatário só precisa multiplicar esse ponto
@@ -141,11 +151,13 @@ object BlindBitOracleClient {
                 val id = block.block_identifier ?: continue
                 send(
                     BlockScanData(
-                        blockHashLE = id.block_hash.toByteArray(),
+                        // reversedArray(): o oracle manda em formato de EXIBIÇÃO
+                        // (big-endian), não LE — ver doc da classe.
+                        blockHashLE = id.block_hash.toByteArray().reversedArray(),
                         blockHeight = id.block_height,
                         txs = block.comp_index.map { item ->
                             TxTweakItem(
-                                txidLE       = item.txid.toByteArray(),
+                                txidLE       = item.txid.toByteArray().reversedArray(),
                                 tweak        = item.tweak.toByteArray(),
                                 outputsShort = chunk8(item.outputs_short)
                             )
