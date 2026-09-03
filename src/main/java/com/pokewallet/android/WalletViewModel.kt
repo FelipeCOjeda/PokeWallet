@@ -9,6 +9,7 @@ import com.pokewallet.network.BlockstreamClient
 import com.pokewallet.network.FeeEstimates
 import com.pokewallet.network.RemoteUtxo
 import com.pokewallet.network.SilentPaymentsSync
+import com.pokewallet.network.TorBlockstreamDataSource
 import com.pokewallet.network.UtxoValueVerifier
 import com.pokewallet.network.WalletScanner
 import com.pokewallet.nostr.GeoRelayDirectory
@@ -980,7 +981,16 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             val context = getApplication<Application>()
             val oracleUrl = BlindBitOraclePrefs.baseUrl(context, network)
                 ?: error("Nenhum host de oracle configurado pra esta rede — configure um manualmente (sem instância pública conhecida pra REGTEST).")
-            val dataSource = NodePrefs.dataSource(context)
+            // "Confirmar via Tor" (toggle na Mochila) troca só a fonte usada
+            // pra CONFIRMAR os candidatos SP (busca de tx bruta por txid) —
+            // não afeta saldo/scan normal do resto do app, nem a comunicação
+            // com o oracle (que não passa por [ChainDataSource] nenhum). Ver
+            // doc de [BlindBitOraclePrefs.isConfirmViaTorEnabled].
+            val dataSource = if (BlindBitOraclePrefs.isConfirmViaTorEnabled(context)) {
+                TorBlockstreamDataSource(TorPrefs.proxy(context))
+            } else {
+                NodePrefs.dataSource(context)
+            }
 
             val seed = SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
             val scanPriv: ByteArray

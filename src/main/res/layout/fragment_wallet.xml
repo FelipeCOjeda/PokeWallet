@@ -530,6 +530,21 @@
                         android:textSize="10sp"
                         android:layout_marginBottom="10dp" />
 
+                    <!-- Confirmação de UTXOs SP via Tor (Orbot) — evita bloqueio de IP
+                         do Blockstream/mempool.space (já bateu rate limit em campo
+                         antes, ver BlockstreamClient.baseUrls). Desligado por padrão;
+                         escopo restrito a esta confirmação, não afeta saldo/scan
+                         normal do resto do app. Exige o Orbot já rodando quando
+                         ligado (ver seção Tor abaixo). -->
+                    <CheckBox
+                        android:id="@+id/cb_sp_confirm_via_tor"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="🧅 Confirmar via Tor (evita bloqueio de IP)"
+                        android:textSize="11sp"
+                        android:textColor="@color/gb_border_soft"
+                        android:layout_marginBottom="10dp" />
+
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_sync_silent_payments"
                         style="@style/Gameboy.Button"

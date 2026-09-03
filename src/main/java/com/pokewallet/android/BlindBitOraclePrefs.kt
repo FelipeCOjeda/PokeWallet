@@ -26,8 +26,9 @@ import com.pokewallet.crypto.Network
  */
 object BlindBitOraclePrefs {
 
-    private const val PREFS_NAME = "pokewallet_prefs"
-    private const val KEY_TLS    = "blindbit_oracle_tls"
+    private const val PREFS_NAME       = "pokewallet_prefs"
+    private const val KEY_TLS          = "blindbit_oracle_tls"
+    private const val KEY_CONFIRM_TOR  = "blindbit_confirm_via_tor"
 
     const val DEFAULT_HOST_MAINNET = "oracle.setor.dev"
     const val DEFAULT_HOST_SIGNET  = "signet.oracle.setor.dev"
@@ -91,5 +92,23 @@ object BlindBitOraclePrefs {
         val h = host(context, network) ?: return null
         val scheme = if (isTlsEnabled(context)) "https" else "http"
         return "$scheme://$h"
+    }
+
+    /** Desligado por padrão (mesmo raciocínio de [TorPrefs]: sem Orbot
+     *  rodando, ligar isso só trocaria "sem resultado" por "erro de
+     *  conexão recusada"). Quando ligado, a CONFIRMAÇÃO de UTXOs Silent
+     *  Payments (busca da tx bruta por txid, ver
+     *  [com.pokewallet.network.SilentPaymentsConfirmer]) passa a usar
+     *  Blockstream/mempool.space roteado por Tor (ver
+     *  [com.pokewallet.network.TorBlockstreamDataSource]) em vez do
+     *  [NodePrefs.dataSource] normal — pedido explícito do usuário depois
+     *  de mempool/Blockstream já terem bloqueado o IP do app em campo
+     *  antes (ver histórico em [com.pokewallet.network.BlockstreamClient.baseUrls]).
+     *  Escopo deliberadamente restrito à confirmação SP: saldo/scan normal
+     *  do resto do app continuam sem depender do Orbot. */
+    fun isConfirmViaTorEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_CONFIRM_TOR, false)
+
+    fun setConfirmViaTorEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CONFIRM_TOR, enabled).apply()
     }
 }

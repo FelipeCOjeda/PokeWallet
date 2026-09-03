@@ -155,6 +155,7 @@ class WalletFragment : Fragment() {
         val tvSpOracleStatus = view.findViewById<TextView>(R.id.tv_sp_oracle_status)
         val btnConfigureSpOracle = view.findViewById<MaterialButton>(R.id.btn_configure_sp_oracle)
         val btnSyncSilentPayments = view.findViewById<MaterialButton>(R.id.btn_sync_silent_payments)
+        val cbSpConfirmViaTor = view.findViewById<CheckBox>(R.id.cb_sp_confirm_via_tor)
         val cardError        = view.findViewById<View>(R.id.card_error)
         val tvError          = view.findViewById<TextView>(R.id.tv_error)
         val bottomNav        = view.findViewById<BottomNavigationView>(R.id.bottom_nav)
@@ -235,6 +236,10 @@ class WalletFragment : Fragment() {
         updateSpOracleStatus(tvSpOracleStatus)
         btnConfigureSpOracle.setOnClickListener { showSpOracleDialog(tvSpOracleStatus) }
         btnSyncSilentPayments.setOnClickListener { triggerSilentPaymentsSync(tvSpOracleStatus, btnSyncSilentPayments) }
+        cbSpConfirmViaTor.isChecked = BlindBitOraclePrefs.isConfirmViaTorEnabled(requireContext())
+        cbSpConfirmViaTor.setOnCheckedChangeListener { _, checked ->
+            BlindBitOraclePrefs.setConfirmViaTorEnabled(requireContext(), checked)
+        }
 
         val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 

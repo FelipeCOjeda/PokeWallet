@@ -65,8 +65,17 @@ object BlockstreamClient : ChainDataSource {
 
     // ── API calls (ChainDataSource) ────────────────────
 
-    override fun getAddressStats(address: String, network: Network): AddressStats {
-        val json    = JSONObject(getWithFallback(network, "/address/$address"))
+    override fun getAddressStats(address: String, network: Network): AddressStats =
+        parseAddressStats(address, getWithFallback(network, "/address/$address"))
+
+    /** Igual a [getAddressStats], roteado por um proxy SOCKS (ver
+     *  [getRawTxViaProxy] pro motivo de existir uma variante por método
+     *  em vez de um proxy global). */
+    fun getAddressStatsViaProxy(address: String, network: Network, proxy: Proxy): AddressStats =
+        parseAddressStats(address, getWithFallback(network, "/address/$address", proxy))
+
+    private fun parseAddressStats(address: String, body: String): AddressStats {
+        val json    = JSONObject(body)
         val chain   = json.getJSONObject("chain_stats")
         val mempool = json.getJSONObject("mempool_stats")
         return AddressStats(
@@ -78,8 +87,14 @@ object BlockstreamClient : ChainDataSource {
         )
     }
 
-    override fun getUtxos(address: String, network: Network): List<RemoteUtxo> {
-        val array = JSONArray(getWithFallback(network, "/address/$address/utxo"))
+    override fun getUtxos(address: String, network: Network): List<RemoteUtxo> =
+        parseUtxos(getWithFallback(network, "/address/$address/utxo"))
+
+    fun getUtxosViaProxy(address: String, network: Network, proxy: Proxy): List<RemoteUtxo> =
+        parseUtxos(getWithFallback(network, "/address/$address/utxo", proxy))
+
+    private fun parseUtxos(body: String): List<RemoteUtxo> {
+        val array = JSONArray(body)
         return (0 until array.length()).map { i ->
             val obj    = array.getJSONObject(i)
             val status = obj.getJSONObject("status")
@@ -96,8 +111,17 @@ object BlockstreamClient : ChainDataSource {
     override fun getTipHeight(network: Network): Long =
         getWithFallback(network, "/blocks/tip/height").trim().toLong()
 
-    override fun getFeeEstimates(network: Network): FeeEstimates {
-        val json = JSONObject(getWithFallback(network, "/fee-estimates"))
+    fun getTipHeightViaProxy(network: Network, proxy: Proxy): Long =
+        getWithFallback(network, "/blocks/tip/height", proxy).trim().toLong()
+
+    override fun getFeeEstimates(network: Network): FeeEstimates =
+        parseFeeEstimates(getWithFallback(network, "/fee-estimates"))
+
+    fun getFeeEstimatesViaProxy(network: Network, proxy: Proxy): FeeEstimates =
+        parseFeeEstimates(getWithFallback(network, "/fee-estimates", proxy))
+
+    private fun parseFeeEstimates(body: String): FeeEstimates {
+        val json = JSONObject(body)
         val byBlockTarget = sortedMapOf<Int, Double>()
         json.keys().forEach { key ->
             key.toIntOrNull()?.let { target -> byBlockTarget[target] = json.getDouble(key) }
@@ -117,14 +141,24 @@ object BlockstreamClient : ChainDataSource {
      * Igual a [broadcast], mas roteando a conexão por um proxy SOCKS (Tor,
      * via Orbot local) — o IP que fala com Blockstream/mempool.space na
      * hora de transmitir a tx é o do relay Tor de saída, não o do
-     * aparelho. Só o passo de broadcast; consultas de saldo/UTXO (scan)
-     * continuam diretas, fora do escopo desta opção.
+     * aparelho.
      */
     fun broadcastViaProxy(rawHex: String, network: Network, proxy: Proxy): String =
         postWithFallback(network, "/tx", rawHex, proxy).trim()
 
     override fun getRawTx(txid: String, network: Network): String =
         getWithFallback(network, "/tx/$txid/hex").trim()
+
+    /**
+     * Igual a [getRawTx], roteado por um proxy SOCKS — usado pela
+     * confirmação de UTXOs Silent Payments quando o usuário liga "via Tor"
+     * na Mochila (achado real: mempool.space/Blockstream já bateram rate
+     * limit por IP em campo, ver [baseUrls]; Tor troca o IP de saída a
+     * cada requisição via circuito diferente, evitando bloqueio contínuo
+     * do MESMO IP do aparelho).
+     */
+    fun getRawTxViaProxy(txid: String, network: Network, proxy: Proxy): String =
+        getWithFallback(network, "/tx/$txid/hex", proxy).trim()
 
     fun getAddressTxs(address: String, network: Network): List<JSONObject> {
         return try {
@@ -177,11 +211,11 @@ object BlockstreamClient : ChainDataSource {
      * diagnóstico de verdade em vez de "bateu rate limit" genérico quando
      * pode ser timeout/DNS/etc num provedor específico.
      */
-    private fun getWithFallback(network: Network, path: String): String {
+    private fun getWithFallback(network: Network, path: String, proxy: Proxy? = null): String {
         val failures = mutableListOf<String>()
         for (base in baseUrls(network)) {
             try {
-                return get(base + path)
+                return get(base + path, proxy)
             } catch (e: Exception) {
                 failures += "${hostOf(base)}: ${e.message}"
             }
@@ -221,8 +255,8 @@ object BlockstreamClient : ChainDataSource {
     // em vez de abrir uma nova a cada vez). disconnect() só no caminho de
     // erro, onde não faz sentido devolver uma conexão possivelmente quebrada
     // pro pool.
-    private fun get(url: String): String {
-        val conn = URL(url).openConnection() as HttpURLConnection
+    private fun get(url: String, proxy: Proxy? = null): String {
+        val conn = (if (proxy != null) URL(url).openConnection(proxy) else URL(url).openConnection()) as HttpURLConnection
         conn.connectTimeout = 10_000
         conn.readTimeout    = 15_000
         conn.requestMethod  = "GET"

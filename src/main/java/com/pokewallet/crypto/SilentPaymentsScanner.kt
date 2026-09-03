@@ -17,6 +17,16 @@ import com.pokewallet.network.BlindBitOracleClient
  */
 object SilentPaymentsScanner {
 
+    /** Trava de segurança pro loop de k em [scanBlock]: nenhum uso legítimo
+     *  chega nem perto disso (pagar a mesma SP address dezenas de vezes na
+     *  MESMA tx já seria incomum) — existe só pra impedir que um dado
+     *  incomum/corrompido do oracle, ou uma futura mudança de protocolo,
+     *  transforme o loop em CPU infinito. É puro cálculo (sem I/O), então
+     *  nenhum timeout de coroutine consegue interromper um loop sem essa
+     *  trava — achado real: sync em mainnet ficou preso sem mover nem
+     *  mostrar erro, mesmo com o timeout de 15min configurado no chamador. */
+    private const val MAX_K_PER_TX = 1_000
+
     /** Um output candidato — ainda NÃO confirmado contra uma fonte própria. */
     data class Candidate(
         val txidLE: ByteArray,
@@ -49,7 +59,7 @@ object SilentPaymentsScanner {
         for (tx in block.txs) {
             val sharedSecret = Bip352.receiverSharedSecretFromPrecomputedTweak(scanPrivateKey, tx.tweak)
             var k = 0
-            while (true) {
+            while (k < MAX_K_PER_TX) {
                 val candidateOutputKey = Bip352.outputPublicKey(spendPubKey, sharedSecret, k)
                 val candidateXOnly = candidateOutputKey.copyOfRange(1, 33)
                 val short = candidateXOnly.copyOfRange(0, 8)

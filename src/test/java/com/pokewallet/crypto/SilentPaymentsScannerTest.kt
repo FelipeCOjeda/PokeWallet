@@ -120,4 +120,32 @@ class SilentPaymentsScannerTest {
         assertEquals(listOf(0, 1), found.map { it.k })
         assertEquals(listOf(output0.toHex(), output1.toHex()), found.map { it.outputXOnlyPubKey.toHex() })
     }
+
+    @Test
+    fun `para no limite de seguranca em vez de rodar pra sempre quando todo k bate`() {
+        // Constrói outputsShort com o short REAL de k=0..1099 — força o loop
+        // a "bater" em toda iteração, provando que MAX_K_PER_TX (1000) para
+        // o loop em vez dele rodar pra sempre (achado real: sync em mainnet
+        // travou de verdade porque o while(true) antigo não tinha limite,
+        // e por ser CPU puro nenhum timeout de coroutine conseguia
+        // interromper).
+        val shorts = (0..1099).map { outputXOnlyFor(it).copyOfRange(0, 8) }
+        val block = BlindBitOracleClient.BlockScanData(
+            blockHashLE = ByteArray(32),
+            blockHeight = 900_002L,
+            txs = listOf(
+                BlindBitOracleClient.TxTweakItem(
+                    txidLE       = fakeTxid,
+                    tweak        = oracleTweak(),
+                    outputsShort = shorts
+                )
+            ),
+            spentOutputsShort = emptyList()
+        )
+
+        val found = SilentPaymentsScanner.scanBlock(block, scanPriv, spendPub)
+
+        assertEquals(1000, found.size)
+        assertEquals((0..999).toList(), found.map { it.k })
+    }
 }
