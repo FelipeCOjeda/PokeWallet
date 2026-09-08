@@ -6,8 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.pokewallet.crypto.*
 import com.pokewallet.network.BalanceCrossChecker
 import com.pokewallet.network.BlockstreamClient
+import com.pokewallet.network.ChainDataSource
 import com.pokewallet.network.FeeEstimates
 import com.pokewallet.network.RemoteUtxo
+import com.pokewallet.network.SilentPaymentsConfirmer
 import com.pokewallet.network.SilentPaymentsSync
 import com.pokewallet.network.TorBlockstreamDataSource
 import com.pokewallet.network.UtxoValueVerifier
@@ -530,7 +532,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun loadTxHistory(addresses: List<com.pokewallet.network.WalletScanner.ScannedAddress>, network: Network) {
+    private fun loadTxHistory(addresses: List<com.pokewallet.network.WalletScanner.ScannedAddress>, network: Network, txLog: List<TxLogEntry>) {
         viewModelScope.launch {
             try {
                 val txMap = LinkedHashMap<String, WalletTx>()
@@ -550,6 +552,21 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                                 WalletTx(txid, net, confirmed, blockTime)
                         }
                     }
+                }
+                // Mescla o histórico local persistido (ver TxLogEntry) — a
+                // ÚNICA fonte pra qualquer transação que só envolve UTXOs
+                // Silent Payments, já que o scan por endereço acima nunca
+                // enxerga isso (output SP não é um endereço derivado do
+                // xpub). Só entra se o txid ainda não veio do scan (que tem
+                // status/valor real confirmados pela rede, sempre preferido
+                // quando disponível).
+                for (entry in txLog) {
+                    if (txMap.containsKey(entry.txid)) continue
+                    val net = when (entry.kind) {
+                        TxLogEntry.KIND_RECEIVE_SP -> entry.amountSats ?: 0L
+                        else                       -> -(entry.amountSats ?: 0L)
+                    }
+                    txMap[entry.txid] = WalletTx(entry.txid, net, confirmed = true, blockTime = entry.timestampMs / 1000)
                 }
                 _txHistory.value = txMap.values
                     .sortedByDescending { it.blockTime ?: Long.MAX_VALUE }
@@ -668,7 +685,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            loadTxHistory(result.allWithActivity, network)
+            loadTxHistory(result.allWithActivity, network, wallet.txLog)
             consecutiveRateLimitHits = 0
         } catch (e: Exception) {
             // ANTES: erro era engolido em silêncio (só isScanning=false), saldo
@@ -972,10 +989,25 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
      * terminar nesse tempo (rede/oracle travado de verdade), falha com erro
      * claro em vez de ficar preso pra sempre segurando [walletSwitchMutex]
      * (que bloquearia qualquer outra operação na carteira indefinidamente).
+     *
+     * [rescanFromHeight], quando informado, IGNORA tanto o progresso salvo
+     * ([WalletData.spScanTipHeight]) quanto [WalletData.birthHeight] e força
+     * o scan a começar exatamente dessa altura — bug real encontrado numa
+     * restauração de carteira (2026-09-04): o primeiro scan de uma carteira
+     * restaurada não conhece [WalletData.birthHeight] (não dá pra saber a
+     * altura de nascimento real só a partir da mnemonic), então cai no
+     * lookback fixo de [SilentPaymentsSync.DEFAULT_LOOKBACK_BLOCKS] (100
+     * blocos) — pagamentos SP recebidos antes disso nunca são vistos. Pior:
+     * depois desse primeiro scan incompleto, [WalletData.spScanTipHeight]
+     * já fica gravado no tip, então TODO sync futuro parte dali pra frente
+     * e a lacuna antiga fica invisível pra sempre sem um jeito manual de
+     * voltar. Usa o mesmo campo (previousScanTipHeight = altura-1) que já
+     * prioriza sobre birthHeight/lookback em [SilentPaymentsSync.resolveStartHeight].
      */
     suspend fun syncSilentPayments(
         onProgress: (height: Long, start: Long, end: Long) -> Unit = { _, _, _ -> },
-        timeoutMs: Long = 15 * 60_000L
+        timeoutMs: Long = 15 * 60_000L,
+        rescanFromHeight: Long? = null
     ): SilentPaymentsSync.SyncResult = withTimeout(timeoutMs) {
         walletSwitchMutex.withLock {
             val wallet = WalletStorage.load()
@@ -1016,7 +1048,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                     network               = network,
                     scanPrivateKey        = scanPriv,
                     spendPubKey           = spendPub,
-                    previousScanTipHeight = wallet.spScanTipHeight,
+                    previousScanTipHeight = rescanFromHeight?.let { maxOf(0L, it - 1) } ?: wallet.spScanTipHeight,
                     birthHeight           = wallet.birthHeight,
                     onBlockScanned        = onProgress
                 )
@@ -1401,7 +1433,17 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val rawTxHex: String,
         val txid: String,
         val seed: ByteArray,
-        val network: Network
+        val network: Network,
+        // "txid:vout" dos UTXOs Silent Payments (wallet.spUtxos) que entraram
+        // nesta tx — precisa sair de spUtxos assim que o broadcast realmente
+        // acontecer, senão fica contando no saldo e sendo oferecido de novo
+        // pra sempre (bug real: spUtxos só tinha código de ADIÇÃO, nunca de
+        // remoção — ver WalletStorage.removeSilentPaymentUtxos).
+        val spentSilentPaymentUtxoKeys: Set<String> = emptySet(),
+        // Soma bruta dos UTXOs escolhidos (antes de troco/fee) — usado só
+        // pra registrar um valor no histórico local (TxLogEntry) quando o
+        // envio é sweep, onde o parâmetro amountSats do chamador é null.
+        val totalInputSats: Long = 0L
     )
 
     private suspend fun executeSend(
@@ -1410,7 +1452,10 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     ): String {
         val prepared = buildSignedTx(destination, amountSats, sweep, feeRateSatPerVbyte, manualUtxoKeys)
         try {
-            return NodePrefs.dataSource(getApplication()).broadcast(prepared.rawTxHex, prepared.network)
+            val txid = NodePrefs.dataSource(getApplication()).broadcast(prepared.rawTxHex, prepared.network)
+            WalletStorage.removeSilentPaymentUtxos(prepared.spentSilentPaymentUtxoKeys)
+            WalletStorage.appendSendLogEntry(txid, amountSats ?: prepared.totalInputSats, prepared.spentSilentPaymentUtxoKeys.isNotEmpty())
+            return txid
         } finally {
             prepared.seed.fill(0)
         }
@@ -1432,7 +1477,10 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val proxy = TorPrefs.proxy(getApplication())
             return try {
-                BlockstreamClient.broadcastViaProxy(prepared.rawTxHex, prepared.network, proxy)
+                val txid = BlockstreamClient.broadcastViaProxy(prepared.rawTxHex, prepared.network, proxy)
+                WalletStorage.removeSilentPaymentUtxos(prepared.spentSilentPaymentUtxoKeys)
+                WalletStorage.appendSendLogEntry(txid, amountSats ?: prepared.totalInputSats, prepared.spentSilentPaymentUtxoKeys.isNotEmpty())
+                txid
             } catch (e: Exception) {
                 throw RuntimeException(
                     "Não foi possível transmitir via Tor — confira se o Orbot está instalado, " +
@@ -1493,9 +1541,19 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             error("Não foi possível publicar via Nostr — nenhum relay confirmou o recebimento.")
         }
 
+        val confirmed = result.replyContent != null
+        // Só tira da lista SP quando o bot CONFIRMOU o broadcast — sem essa
+        // confirmação não dá pra saber se ele processou a mensagem, e tirar
+        // sem certeza esconderia saldo de um UTXO que na verdade não foi
+        // gasto (pior que o bug original, que só reoferece um UTXO já gasto).
+        if (confirmed) {
+            WalletStorage.removeSilentPaymentUtxos(prepared.spentSilentPaymentUtxoKeys)
+            WalletStorage.appendSendLogEntry(prepared.txid, amountSats ?: prepared.totalInputSats, prepared.spentSilentPaymentUtxoKeys.isNotEmpty())
+        }
+
         return NostrSendResult(
             txid      = prepared.txid,
-            confirmed = result.replyContent != null,
+            confirmed = confirmed,
             replyText = result.replyContent
         )
     }
@@ -1547,6 +1605,56 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
      * o destino for um endereço SP, ao invés de tentar e falhar fundo
      * (ver TxAssembler.resolveSilentPaymentDestination pro motivo).
      */
+    /**
+     * UTXOs Silent Payments confirmados que a rede já gastou de verdade
+     * entretanto nunca saíam sozinhos de wallet.spUtxos até esta função
+     * existir — a remoção só acontecia (spentSilentPaymentUtxoKeys, ver
+     * PreparedTx) num gasto NOVO feito com o app já corrigido. Qualquer
+     * UTXO SP gasto ANTES desse fix (ex.: o primeiro teste real em
+     * mainnet, 2026-09-03) ficava fantasma pra sempre, reoferecido em
+     * todo envio futuro e sempre rejeitado pela rede com
+     * "bad-txns-inputs-missingorspent" (bug real, 2026-09-04).
+     *
+     * IMPORTANTE (bug real corrigido na mesma sessão, mesmo dia): a
+     * primeira versão desta função checava via [ChainDataSource.getUtxos]
+     * do provedor configurado (que pode ser o node Electrum/Floresta
+     * PRÓPRIO do usuário, ver [NodePrefs]) — uma lista vazia por índice
+     * incompleto do node (mais novo/menos testado que um Esplora público,
+     * ver [[project_floresta_node]]) é indistinguível de "já foi gasto" e
+     * podou pelo menos um UTXO SP de verdade que ainda não tinha sido
+     * gasto, fazendo o app dizer "sem saldo" por engano (assustador, mas
+     * o dinheiro nunca saiu do lugar — só sumiu do rastreamento LOCAL).
+     * Corrigido usando [BlockstreamClient.getOutspend] — SEMPRE via
+     * Blockstream/mempool.space (nunca o node próprio), pergunta sobre o
+     * output EXATO (txid:vout) e responde spent=true/false sem ambiguidade
+     * nenhuma, em vez de inferir a partir de uma lista que pode estar
+     * incompleta.
+     */
+    private suspend fun pruneSpentSilentPaymentUtxos(
+        spUtxos: List<SilentPaymentsConfirmer.ConfirmedUtxo>,
+        network: Network
+    ): List<SilentPaymentsConfirmer.ConfirmedUtxo> {
+        if (spUtxos.isEmpty()) return spUtxos
+        val stillUnspent = mutableListOf<SilentPaymentsConfirmer.ConfirmedUtxo>()
+        val spentKeys = mutableSetOf<String>()
+        for (u in spUtxos) {
+            val spent = try {
+                BlockstreamClient.getOutspend(u.txid, u.vout, network)
+            } catch (e: Exception) {
+                // Falha de rede/provedor nesta checagem específica — não
+                // arrisca podar um UTXO de verdade por causa disso, deixa
+                // pro próximo envio/sync tentar de novo.
+                stillUnspent += u
+                continue
+            }
+            if (spent) spentKeys += "${u.txid}:${u.vout}" else stillUnspent += u
+        }
+        if (spentKeys.isNotEmpty()) {
+            WalletStorage.removeSilentPaymentUtxos(spentKeys)
+        }
+        return stillUnspent
+    }
+
     private suspend fun resolveSpend(
         wallet: WalletData,
         xpub: String,
@@ -1560,6 +1668,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         seed: ByteArray? = null
     ): SpendResolver.Resolved {
         val scanResult = scanForSend(xpub, network, spendType)
+        val dataSource = NodePrefs.dataSource(getApplication())
 
         // UTXOs Silent Payments (wallet.spUtxos) só entram como candidatos
         // quando: (1) tem seed (watch-only não sabe derivar a chave de
@@ -1568,7 +1677,11 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         // com UM tipo de witness só; misturar SP com UTXOs BIP84 (SegWit
         // v0) precisaria de um assinador com witness heterogêneo por
         // input, que não existe ainda (ver TxAssembler.deriveSpendableInputs).
-        val silentPaymentCandidates = if (seed != null && spendType == SpendType.BIP86) wallet.spUtxos else emptyList()
+        // Poda os que a rede já gastou (ver pruneSpentSilentPaymentUtxos)
+        // antes de virarem candidato — fecha o bug do UTXO fantasma.
+        val silentPaymentCandidates = if (seed != null && spendType == SpendType.BIP86)
+            pruneSpentSilentPaymentUtxos(wallet.spUtxos, network)
+        else emptyList()
 
         // scanResult.totalSats só conta UTXOs normais (BIP84/86 derivados) —
         // achado real: uma carteira só com saldo em UTXOs Silent Payments
@@ -1594,8 +1707,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         // vetor de um servidor malicioso/MITM mentir o valor pra inflar a
         // fee às custas do usuário. Ver UtxoValueVerifier. Roda pros dois
         // caminhos de envio (local signing e air-gapped) porque os dois
-        // passam por resolveSpend().
-        val dataSource = NodePrefs.dataSource(getApplication())
+        // passam por resolveSpend(). (dataSource já resolvido acima.)
         chosen.forEach { UtxoValueVerifier.verify(dataSource, network, it.utxo) }
 
         val precomputedDestSpk = if (SilentPaymentAddress.looksLikeSilentPaymentAddress(destination)) {
@@ -1656,7 +1768,15 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val (rawTxBytes, txid) = TxAssembler.signAndFinalize(spendable, txOutputs, spendType)
         val rawTxHex = rawTxBytes.joinToString("") { "%02x".format(it) }
 
-        PreparedTx(rawTxHex = rawTxHex, txid = txid, seed = seed, network = network)
+        val spentSpKeys = resolved.chosen
+            .filter { it.silentPaymentTweak != null }
+            .mapTo(mutableSetOf()) { "${it.utxo.txid}:${it.utxo.vout}" }
+
+        PreparedTx(
+            rawTxHex = rawTxHex, txid = txid, seed = seed, network = network,
+            spentSilentPaymentUtxoKeys = spentSpKeys,
+            totalInputSats = resolved.chosen.sumOf { it.utxo.valueSats }
+        )
         }
     }
 

@@ -155,6 +155,8 @@ class WalletFragment : Fragment() {
         val tvSpOracleStatus = view.findViewById<TextView>(R.id.tv_sp_oracle_status)
         val btnConfigureSpOracle = view.findViewById<MaterialButton>(R.id.btn_configure_sp_oracle)
         val btnSyncSilentPayments = view.findViewById<MaterialButton>(R.id.btn_sync_silent_payments)
+        val etSpRescanHeight = view.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.et_sp_rescan_height)
+        val btnSpRescanFromHeight = view.findViewById<MaterialButton>(R.id.btn_sp_rescan_from_height)
         val cbSpConfirmViaTor = view.findViewById<CheckBox>(R.id.cb_sp_confirm_via_tor)
         val cardError        = view.findViewById<View>(R.id.card_error)
         val tvError          = view.findViewById<TextView>(R.id.tv_error)
@@ -236,6 +238,15 @@ class WalletFragment : Fragment() {
         updateSpOracleStatus(tvSpOracleStatus)
         btnConfigureSpOracle.setOnClickListener { showSpOracleDialog(tvSpOracleStatus) }
         btnSyncSilentPayments.setOnClickListener { triggerSilentPaymentsSync(tvSpOracleStatus, btnSyncSilentPayments) }
+        btnSpRescanFromHeight.setOnClickListener {
+            val heightText = etSpRescanHeight.text?.toString()?.trim() ?: ""
+            val height = heightText.toLongOrNull()
+            if (height == null || height < 0) {
+                Toast.makeText(requireContext(), "Informe uma altura de bloco válida.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            triggerSilentPaymentsSync(tvSpOracleStatus, btnSpRescanFromHeight, rescanFromHeight = height)
+        }
         cbSpConfirmViaTor.isChecked = BlindBitOraclePrefs.isConfirmViaTorEnabled(requireContext())
         cbSpConfirmViaTor.setOnCheckedChangeListener { _, checked ->
             BlindBitOraclePrefs.setConfirmViaTorEnabled(requireContext(), checked)
@@ -851,8 +862,22 @@ class WalletFragment : Fragment() {
             setPadding(0, (4 * dp).toInt(), 0, 0)
         }
 
+        // Txid completo, selecionável (copiar/colar num block explorer) —
+        // antes não aparecia em lugar nenhum pra UTXOs Silent Payments
+        // (só "🔒 Silent Payments" sem identificador nenhum), impossível
+        // de rastrear/depurar um pagamento específico sem isso.
+        val tvTxid = TextView(requireContext()).apply {
+            text = "${utxo.txid}:${utxo.vout}"
+            textSize = 9f
+            typeface = Typeface.MONOSPACE
+            setTextColor(ContextCompat.getColor(requireContext(), R.color.gb_border_soft))
+            setTextIsSelectable(true)
+            setPadding(0, (2 * dp).toInt(), 0, 0)
+        }
+
         container.addView(headerRow)
         container.addView(tvSource)
+        container.addView(tvTxid)
 
         container.setOnClickListener { onToggle(!frozen) }
         if (frozen) container.alpha = 0.6f
@@ -1010,7 +1035,7 @@ class WalletFragment : Fragment() {
 
         sliderFee.addOnChangeListener { _, value, _ -> updateFeeLabels(value.toDouble()) }
 
-        var currentSendMode: SendMode = SendMode.Internet
+        var currentSendMode: SendMode = SendMode.Tor
         rgSendMode.setOnCheckedChangeListener { _, checkedId ->
             currentSendMode = when (checkedId) {
                 R.id.rb_mode_tor     -> SendMode.Tor
@@ -1097,11 +1122,11 @@ class WalletFragment : Fragment() {
                             dialog.dismiss()
                             viewModel.resetSendState()
                             val message = if (state.confirmedByRelay) {
-                                "✅ Enviado!\ntxid: ${state.txid.take(16)}…"
+                                "✅ Enviado!\n\ntxid:\n${state.txid}"
                             } else {
-                                "📡 Publicado via Nostr — aguardando confirmação (pode levar alguns minutos)\ntxid: ${state.txid.take(16)}…"
+                                "📡 Publicado via Nostr — aguardando confirmação (pode levar alguns minutos)\n\ntxid:\n${state.txid}"
                             }
-                            Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
+                            showSelectableTextDialog("Envio", message)
                         }
                         is SendState.Error -> {
                             progressSend.visibility = View.GONE
@@ -1369,12 +1394,12 @@ class WalletFragment : Fragment() {
         val etHex        = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.et_signed_tx_hex)
         val btnConfirmHex = dialogView.findViewById<MaterialButton>(R.id.btn_confirm_signed_tx_hex)
         val progress     = dialogView.findViewById<ProgressBar>(R.id.progress_airgapped)
-        val tvResult     = dialogView.findViewById<TextView>(R.id.tv_airgapped_result)
+        val tvResult     = dialogView.findViewById<TextView>(R.id.tv_airgapped_result).apply { setTextIsSelectable(true) }
         val btnClose     = dialogView.findViewById<MaterialButton>(R.id.btn_close_airgapped)
         val rgMode       = dialogView.findViewById<RadioGroup>(R.id.rg_airgapped_broadcast_mode)
         val tvModeExplainer = dialogView.findViewById<TextView>(R.id.tv_airgapped_mode_explainer)
 
-        var broadcastMode: SendMode = SendMode.Internet
+        var broadcastMode: SendMode = SendMode.Tor
         rgMode.setOnCheckedChangeListener { _, checkedId ->
             broadcastMode = when (checkedId) {
                 R.id.rb_airgapped_mode_tor     -> SendMode.Tor
@@ -1442,7 +1467,7 @@ class WalletFragment : Fragment() {
                         btnScan.visibility = View.GONE
                         layoutPasteHex.visibility = View.GONE
                         tvResult.setTextColor(ContextCompat.getColor(requireContext(), R.color.green_status))
-                        tvResult.text = "✅ Transmitida!\ntxid: ${state.txid.take(16)}…"
+                        tvResult.text = "✅ Transmitida!\n\ntxid:\n${state.txid}"
                         tvResult.visibility = View.VISIBLE
                         viewModel.resetAirGappedBroadcastState()
                     }
@@ -1669,14 +1694,14 @@ class WalletFragment : Fragment() {
      *  agora") — desabilita o botão enquanto roda (pode levar um tempo,
      *  ~2000 blocos no primeiro scan) pra evitar toque duplo disparando
      *  dois syncs concorrentes. */
-    private fun triggerSilentPaymentsSync(statusView: TextView, button: MaterialButton) {
+    private fun triggerSilentPaymentsSync(statusView: TextView, button: MaterialButton, rescanFromHeight: Long? = null) {
         button.isEnabled = false
         val originalText = button.text
         button.text = "🔄 Sincronizando…"
         lifecycleScope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    viewModel.syncSilentPayments(onProgress = { height, start, end ->
+                    viewModel.syncSilentPayments(rescanFromHeight = rescanFromHeight, onProgress = { height, start, end ->
                         // Roda numa thread de background (IO) — post() pra
                         // mexer na View com segurança. Progresso real em vez
                         // de "Sincronizando…" parado: cada bloco custa uma
@@ -1718,14 +1743,24 @@ class WalletFragment : Fragment() {
      *  copiar e colar em algum lugar pra compartilhar) — Toast some rápido
      *  demais pra mensagens longas, ver nota em triggerSilentPaymentsSync. */
     private fun showSpSyncErrorDialog(message: String) {
+        showSelectableTextDialog("⚠️ Erro ao sincronizar Silent Payments", message)
+    }
+
+    /** Diálogo genérico com texto SELECIONÁVEL (copiar/colar, ex.: pra
+     *  conferir um txid num block explorer) — Toast some rápido demais e
+     *  não é selecionável, ruim pra qualquer texto que o usuário precise
+     *  guardar (achado real: txid de envio sumia junto com o Toast, sem
+     *  jeito de recuperar depois). */
+    private fun showSelectableTextDialog(title: String, message: String) {
         val tv = TextView(requireContext()).apply {
             text = message
             setTextIsSelectable(true)
+            typeface = Typeface.MONOSPACE
             setPadding((20 * resources.displayMetrics.density).toInt(), (16 * resources.displayMetrics.density).toInt(), (20 * resources.displayMetrics.density).toInt(), (16 * resources.displayMetrics.density).toInt())
             setTextColor(ContextCompat.getColor(requireContext(), R.color.gb_border))
         }
         AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
-            .setTitle("⚠️ Erro ao sincronizar Silent Payments")
+            .setTitle(title)
             .setView(tv)
             .setPositiveButton("OK", null)
             .show()

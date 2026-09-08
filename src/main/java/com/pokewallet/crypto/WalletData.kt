@@ -3,6 +3,34 @@ package com.pokewallet.crypto
 import org.json.JSONObject
 
 /**
+ * Registro local e PERSISTIDO de transações — existe porque o histórico
+ * dinâmico (WalletViewModel.loadTxHistory, varre endereços derivados via
+ * Blockstream) estruturalmente nunca inclui nada que só envolva UTXOs
+ * Silent Payments (nem o recebimento, nem um envio que gasta só SP sem
+ * gerar troco em endereço normal) — o output SP não é um endereço
+ * derivado do xpub, não tem como "redescobrir" reescaneando endereços.
+ * Sem isso, o único jeito de saber o txid de um envio/recebimento SP era
+ * um Toast que sumia sozinho (achado real, 2026-09-04: usuário não
+ * conseguia nem confirmar se uma transação SP->SP tinha saído do lugar).
+ */
+data class TxLogEntry(
+    val txid: String,
+    /** "send" ou "receive_sp" — string simples (não enum) pra não migrar
+     *  wallet.json antigo se um tipo novo aparecer depois. */
+    val kind: String,
+    /** null = sweep (valor exato só saberia somando os UTXOs escolhidos,
+     *  não vale a complexidade só pra exibição de histórico). */
+    val amountSats: Long?,
+    val timestampMs: Long,
+    val viaSilentPayment: Boolean = false
+) {
+    companion object {
+        const val KIND_SEND = "send"
+        const val KIND_RECEIVE_SP = "receive_sp"
+    }
+}
+
+/**
  * Representa o estado persistido da wallet.
  *
  * Este objeto é a fonte de verdade em memória,
@@ -113,6 +141,12 @@ data class WalletData(
      *  de fallback pra carteira restaurada/watch-only/antiga sem esse
      *  campo. */
     var birthHeight: Long? = null,
+
+    // -----------------------------
+    // Histórico local persistido (ver TxLogEntry acima) — cresce por
+    // append, capado em WalletStorage.appendTxLogEntries.
+    // -----------------------------
+    var txLog: List<TxLogEntry> = emptyList(),
 
     // -----------------------------
     // JSON bruto (preservação futura)

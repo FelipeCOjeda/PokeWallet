@@ -198,6 +198,18 @@ object WalletStorage {
             )
         }
 
+        val txLogArray = json.optJSONArray("txLog") ?: org.json.JSONArray()
+        val txLog = (0 until txLogArray.length()).map { i ->
+            val o = txLogArray.getJSONObject(i)
+            TxLogEntry(
+                txid             = o.getString("txid"),
+                kind             = o.getString("kind"),
+                amountSats       = if (!o.isNull("amountSats")) o.getLong("amountSats") else null,
+                timestampMs      = o.getLong("timestampMs"),
+                viaSilentPayment = o.optBoolean("viaSilentPayment", false)
+            )
+        }
+
         fun intSet(field: String): Set<Int> {
             val arr = json.optJSONArray(field) ?: return emptySet()
             return (0 until arr.length()).mapTo(mutableSetOf()) { arr.getInt(it) }
@@ -231,6 +243,7 @@ object WalletStorage {
             spUtxos            = spUtxos,
             spScanTipHeight    = json.optLong("spScanTipHeight", 0L),
             birthHeight        = if (json.has("birthHeight") && !json.isNull("birthHeight")) json.getLong("birthHeight") else null,
+            txLog              = txLog,
             raw                = json
         )
     }
@@ -259,6 +272,14 @@ object WalletStorage {
         }))
         wallet.raw.put("spScanTipHeight", wallet.spScanTipHeight)
         wallet.raw.put("birthHeight", wallet.birthHeight ?: JSONObject.NULL)
+        wallet.raw.put("txLog", org.json.JSONArray(wallet.txLog.map { e ->
+            JSONObject()
+                .put("txid", e.txid)
+                .put("kind", e.kind)
+                .put("amountSats", e.amountSats ?: JSONObject.NULL)
+                .put("timestampMs", e.timestampMs)
+                .put("viaSilentPayment", e.viaSilentPayment)
+        }))
         val serialized = wallet.raw.toString(2)
         walletFile.writeBytes(WalletEncryption.encrypt(serialized))
         cachedRawJson = serialized
@@ -351,6 +372,63 @@ object WalletStorage {
         val toAdd = newUtxos.filterNot { "${it.txid}:${it.vout}" in existingKeys }
         wallet.spUtxos = wallet.spUtxos + toAdd
         wallet.spScanTipHeight = maxOf(wallet.spScanTipHeight, newScanTipHeight)
+        // Registra no histórico local (ver TxLogEntry) só os REALMENTE
+        // novos (toAdd, não newUtxos) — um rescan manual que redescobre um
+        // UTXO já conhecido não deve duplicar a entrada no histórico.
+        if (toAdd.isNotEmpty()) {
+            wallet.txLog = appendCappedLog(wallet.txLog, toAdd.map { u ->
+                TxLogEntry(
+                    txid             = u.txid,
+                    kind             = TxLogEntry.KIND_RECEIVE_SP,
+                    amountSats       = u.valueSats,
+                    timestampMs      = System.currentTimeMillis(),
+                    viaSilentPayment = true
+                )
+            })
+        }
+        saveLocked(wallet)
+    }
+
+    /** Registra um envio bem-sucedido no histórico local — ver TxLogEntry
+     *  pro motivo de existir (histórico dinâmico via Blockstream nunca
+     *  pega um envio que só gasta UTXO Silent Payments). */
+    fun appendSendLogEntry(txid: String, amountSats: Long?, viaSilentPayment: Boolean): Unit = synchronized(lock) {
+        val wallet = loadLocked()
+        wallet.txLog = appendCappedLog(wallet.txLog, listOf(
+            TxLogEntry(
+                txid             = txid,
+                kind             = TxLogEntry.KIND_SEND,
+                amountSats       = amountSats,
+                timestampMs      = System.currentTimeMillis(),
+                viaSilentPayment = viaSilentPayment
+            )
+        ))
+        saveLocked(wallet)
+    }
+
+    /** Máximo de entradas guardadas — evita crescimento sem limite de
+     *  wallet.json numa carteira usada por anos; 500 entradas é folga
+     *  generosa pro uso real deste app (histórico visível na UI já corta
+     *  bem antes disso). Dedup por txid: uma mesma tx nunca aparece duas
+     *  vezes (ex.: reenviar o mesmo rescan). */
+    private fun appendCappedLog(current: List<TxLogEntry>, new: List<TxLogEntry>): List<TxLogEntry> {
+        val existingTxids = current.mapTo(mutableSetOf()) { it.txid }
+        val toAppend = new.filterNot { it.txid in existingTxids }
+        return (current + toAppend).takeLast(500)
+    }
+
+    /**
+     * Contraparte de [addSilentPaymentUtxos]: tira da lista persistida os
+     * UTXOs SP ("txid:vout") que acabaram de ser gastos com sucesso num
+     * broadcast — sem isso, um UTXO SP já gasto continua contando no saldo
+     * e sendo oferecido de novo em todo envio futuro, sempre falhando com
+     * "bad-txns-inputs-missingorspent" (bug real encontrado 2026-09-04:
+     * esta lista só tinha código de adição, nunca de remoção).
+     */
+    fun removeSilentPaymentUtxos(spentKeys: Set<String>): Unit = synchronized(lock) {
+        if (spentKeys.isEmpty()) return@synchronized
+        val wallet = loadLocked()
+        wallet.spUtxos = wallet.spUtxos.filterNot { "${it.txid}:${it.vout}" in spentKeys }
         saveLocked(wallet)
     }
 

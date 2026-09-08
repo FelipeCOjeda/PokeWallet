@@ -554,6 +554,51 @@
                         android:textSize="10sp"
                         app:backgroundTint="@color/green_status" />
 
+                    <!-- Rescan manual desde uma altura específica — "Sincronizar
+                         agora" só cobre daqui pra frente (continua de
+                         spScanTipHeight, ou olha só os últimos 100 blocos numa
+                         carteira restaurada sem birthHeight conhecida). Pagamento
+                         SP recebido ANTES dessa janela fica invisível pra sempre
+                         sem isso — bug real encontrado numa restauração
+                         (2026-09-04): a carteira restaurada nunca escaneou os
+                         blocos onde os pagamentos de verdade foram minerados. -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Carteira restaurada? O scan normal olha só os últimos 100 blocos. Se o pagamento é mais antigo, informa a altura do bloco abaixo (dá pra ver no mempool.space/blockstream.info pesquisando o txid) e reescaneia a partir dali."
+                        android:textSize="10sp"
+                        android:textColor="@color/gb_border_soft"
+                        android:layout_marginTop="10dp"
+                        android:layout_marginBottom="8dp" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Altura do bloco"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                        android:layout_marginBottom="10dp"
+                        app:boxStrokeColor="@color/gb_border_soft"
+                        app:hintTextColor="@color/gb_border_soft">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_sp_rescan_height"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:textColor="@color/gb_border"
+                            android:fontFamily="monospace"
+                            android:singleLine="true" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_sp_rescan_from_height"
+                        style="@style/Gameboy.Button.Outline"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:text="🔄 Reescanear desde essa altura"
+                        android:textSize="10sp" />
+
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1.5dp"

@@ -160,6 +160,23 @@ object BlockstreamClient : ChainDataSource {
     fun getRawTxViaProxy(txid: String, network: Network, proxy: Proxy): String =
         getWithFallback(network, "/tx/$txid/hex", proxy).trim()
 
+    /**
+     * Status de gasto de um output ESPECÍFICO (txid:vout) — inequívoco por
+     * natureza (Esplora responde exatamente "spent": true/false pra esse
+     * output, nunca ambíguo). Existe pra [pruneSpentSilentPaymentUtxos] em
+     * WalletViewModel: checar via [getUtxos] (lista de UTXOs de um
+     * endereço) tem um risco real de falso positivo se o provedor não tiver
+     * indexação completa pra aquele endereço específico (ex.: um node
+     * Electrum/Floresta próprio, mais novo e menos testado que um Esplora
+     * público) — uma lista vazia por ÍNDICE INCOMPLETO seria indistinguível
+     * de "já foi gasto" e podaria um UTXO de verdade da carteira sem ele
+     * ter sido gasto. Esta consulta é sempre via Blockstream/mempool.space
+     * (nunca o node próprio do usuário) exatamente por isso — a fonte mais
+     * completa e confiável disponível pra essa checagem de segurança.
+     */
+    fun getOutspend(txid: String, vout: Int, network: Network): Boolean =
+        JSONObject(getWithFallback(network, "/tx/$txid/outspend/$vout")).getBoolean("spent")
+
     fun getAddressTxs(address: String, network: Network): List<JSONObject> {
         return try {
             val arr = JSONArray(getWithFallback(network, "/address/$address/txs"))

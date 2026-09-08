@@ -256,19 +256,19 @@
                 android:layout_marginBottom="8dp">
 
                 <RadioButton
-                    android:id="@+id/rb_mode_internet"
+                    android:id="@+id/rb_mode_tor"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/send_mode_internet"
+                    android:text="@string/send_mode_tor"
                     android:buttonTint="@color/bitcoin_orange"
                     android:textColor="@color/gb_border"
                     android:checked="true" />
 
                 <RadioButton
-                    android:id="@+id/rb_mode_tor"
+                    android:id="@+id/rb_mode_internet"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/send_mode_tor"
+                    android:text="@string/send_mode_internet"
                     android:buttonTint="@color/bitcoin_orange"
                     android:textColor="@color/gb_border" />
 
@@ -286,7 +286,7 @@
                 android:id="@+id/tv_send_mode_explainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/send_mode_internet_explainer"
+                android:text="@string/send_mode_tor_explainer"
                 android:textSize="12sp"
                 android:textColor="@color/gb_border_soft"
                 android:layout_marginBottom="28dp" />
