@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_overworld_repeat">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_gameboy_box"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="⚡ ENVIAR LIGHTNING"
+            android:textSize="13sp"
+            style="@style/Gameboy.Title"
+            android:gravity="center"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Passo 1: destino (invoice BOLT11, endereço Spark ou LN address). -->
+        <LinearLayout
+            android:id="@+id/group_lightning_send_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="DESTINO"
+                android:textSize="10sp"
+                style="@style/Gameboy.Label"
+                android:layout_marginBottom="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="20dp">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Invoice, endereço Spark ou LN address"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    app:boxStrokeColor="@color/gb_border_soft"
+                    app:hintTextColor="@color/gb_border_soft">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/et_lightning_destination"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textMultiLine"
+                        android:maxLines="3"
+                        android:textColor="@color/gb_border"
+                        android:fontFamily="monospace" />
+
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_lightning_scan_qr"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:layout_marginStart="10dp"
+                    android:text="@string/scan_qr"
+                    android:textStyle="bold"
+                    android:textColor="@color/accent_yellow"
+                    android:textSize="10sp"
+                    app:strokeColor="@color/accent_yellow"
+                    app:cornerRadius="12dp" />
+
+            </LinearLayout>
+
+            <!-- Explica que um endereço Bitcoin normal também é aceito aqui
+                 (saque do saldo Lightning pro on-chain) — sem isso essa opção
+                 fica invisível, achado real: Felipe não sabia que dava pra
+                 sacar pro on-chain por esse mesmo campo. -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="💡 Também aceita um endereço Bitcoin normal (saca do Lightning pro on-chain)"
+                android:textSize="10sp"
+                android:textColor="@color/gb_border_soft"
+                android:layout_marginTop="-12dp"
+                android:layout_marginBottom="20dp" />
+
+            <!-- Só usado quando o destino não fixa valor (invoice amountless,
+                 endereço Spark) — ignorado (fica escondido) quando o destino
+                 já tem valor embutido. -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/til_lightning_send_amount"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Valor em sats"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_marginBottom="20dp"
+                android:visibility="gone"
+                app:boxStrokeColor="@color/gb_border_soft"
+                app:hintTextColor="@color/gb_border_soft">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_lightning_send_amount"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:textColor="@color/gb_border"
+                    android:fontFamily="monospace"
+                    android:singleLine="true" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_lightning_prepare_send"
+                style="@style/Gameboy.Button"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="🔎 Verificar"
+                android:textSize="12sp"
+                app:backgroundTint="@color/accent_yellow" />
+
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/pb_lightning_send"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:visibility="gone"
+            android:layout_marginTop="16dp" />
+
+        <TextView
+            android:id="@+id/tv_lightning_send_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="@color/error_red"
+            android:gravity="center"
+            android:visibility="gone"
+            android:layout_marginTop="10dp" />
+
+        <!-- Passo 2: confirmação — mostra valor + taxa estimada ANTES de
+             mover fundos de verdade (prepareSend/confirmSend em duas fases,
+             mesmo espírito do fluxo on-chain). -->
+        <LinearLayout
+            android:id="@+id/group_lightning_send_confirm"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tv_lightning_send_preview"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:textColor="@color/gb_border"
+                android:background="@color/bg_dark"
+                android:padding="18dp"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:lineSpacingExtra="6dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="20dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_lightning_confirm_send"
+                style="@style/Gameboy.Button"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="⚡ Confirmar envio"
+                android:textSize="12sp"
+                app:backgroundTint="@color/green_status"
+                android:layout_marginBottom="10dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_lightning_cancel_send"
+                style="@style/Gameboy.Button.Outline"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="✕ Cancelar"
+                android:textSize="11sp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

@@ -17,6 +17,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Breez SDK - Spark (pagamentos Lightning self-custodial, opt-in) —
+        // não está publicada no Maven Central, só no repositório próprio da Breez.
+        maven { url = uri("https://mvn.breez.technology/releases") }
     }
 }
 

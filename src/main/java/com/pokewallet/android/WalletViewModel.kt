@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.pokewallet.crypto.*
+import com.pokewallet.lightning.supportsLightning
 import com.pokewallet.network.BalanceCrossChecker
 import com.pokewallet.network.BlockstreamClient
 import com.pokewallet.network.ChainDataSource
@@ -69,6 +70,21 @@ sealed class WalletState {
         val balanceCrossCheckWarning: String? = null
     ) : WalletState()
     data class Error(val message: String) : WalletState()
+}
+
+/**
+ * Conexão com a Breez SDK - Spark (Lightning) — opt-in e isolada do resto
+ * do app: nunca conecta sozinha ao carregar a carteira, só quando o
+ * usuário toca "Ativar Lightning" na Mochila (ver [WalletFragment]).
+ */
+sealed class LightningState {
+    /** Watch-only (sem seed neste aparelho) ou rede sem suporte da Spark
+     *  (só MAINNET/REGTEST, ver [com.pokewallet.lightning.supportsLightning]). */
+    object Unavailable : LightningState()
+    object Disconnected : LightningState()
+    object Connecting : LightningState()
+    data class Connected(val balanceSats: Long) : LightningState()
+    data class Error(val message: String) : LightningState()
 }
 
 sealed class RestoreState {
@@ -273,6 +289,15 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     private val _airGappedSignState = MutableStateFlow<AirGappedSignState>(AirGappedSignState.Idle)
     val airGappedSignState: StateFlow<AirGappedSignState> = _airGappedSignState.asStateFlow()
 
+    private val _lightningState = MutableStateFlow<LightningState>(LightningState.Disconnected)
+    val lightningState: StateFlow<LightningState> = _lightningState.asStateFlow()
+
+    /** Não-null só enquanto conectado — [resetPerWalletCaches] garante que
+     *  nunca sobrevive a uma troca/esquecimento de carteira (senão um envio
+     *  Lightning depois de trocar de carteira sairia da carteira ERRADA). */
+    private var lightningWallet: com.pokewallet.lightning.LightningWallet? = null
+    private var lightningEventsJob: Job? = null
+
     private var lastKnownPendingSats: Long = 0L
     private var autoScanJob: Job? = null
 
@@ -447,6 +472,150 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         lastKnownPendingSats = 0L
         _txHistory.value = emptyList()
         _feeState.value = null
+        disconnectLightningIfConnected()
+    }
+
+    /** Desconecta a Breez SDK - Spark da carteira que estava ativa, se
+     *  houver — chamado sempre por [resetPerWalletCaches] (troca/esquece
+     *  carteira, e também no load inicial do app, onde é um no-op). O
+     *  disconnect() em si é fire-and-forget: não vale segurar quem chamou
+     *  esperando a SDK fechar arquivo/DB, e mesmo que [forgetWallet] apague
+     *  o diretório antes desse disconnect terminar, apagar um arquivo ainda
+     *  aberto pelo próprio processo não dá erro no Linux/Android (o inode
+     *  só é liberado quando o último handle fecha). */
+    private fun disconnectLightningIfConnected() {
+        lightningEventsJob?.cancel()
+        lightningEventsJob = null
+        val toDisconnect = lightningWallet
+        lightningWallet = null
+        _lightningState.value = LightningState.Disconnected
+        if (toDisconnect != null) {
+            viewModelScope.launch {
+                try { toDisconnect.disconnect() } catch (_: Exception) {}
+            }
+        }
+    }
+
+    /**
+     * Conecta a Breez SDK - Spark usando o MESMO seed BIP39 desta carteira
+     * (ver [com.pokewallet.lightning.LightningWallet.Companion.connect]) —
+     * chamado só sob demanda (botão "Ativar Lightning" na Mochila), nunca
+     * automaticamente ao carregar a carteira.
+     */
+    fun connectLightning() {
+        val current = _walletState.value as? WalletState.Loaded ?: return
+        if (lightningWallet != null) return // já conectado, ignora segundo toque
+
+        if (current.isWatchOnly || !current.network.supportsLightning) {
+            _lightningState.value = LightningState.Unavailable
+            return
+        }
+
+        _lightningState.value = LightningState.Connecting
+        viewModelScope.launch {
+            try {
+                val wallet = withContext(Dispatchers.IO) { WalletStorage.load() }
+                val connected = com.pokewallet.lightning.LightningWallet.connect(
+                    context    = getApplication(),
+                    walletId   = wallet.fingerprint,
+                    mnemonic   = wallet.mnemonic!!,
+                    passphrase = wallet.passphrase!!,
+                    network    = wallet.network,
+                )
+                // Troca de carteira pode ter acontecido enquanto o connect()
+                // (rede + I/O) estava em voo — descarta o resultado em vez de
+                // deixar a conexão da carteira ANTIGA valer pra ativa nova.
+                if ((_walletState.value as? WalletState.Loaded)?.fingerprint != current.fingerprint) {
+                    connected.disconnect()
+                    return@launch
+                }
+                lightningWallet = connected
+                _lightningState.value = LightningState.Connected(connected.balanceSats())
+                lightningEventsJob = viewModelScope.launch {
+                    // Não filtra por tipo de evento — qualquer evento do SDK
+                    // pode ter mexido no saldo, e reconsultar getInfo() é
+                    // barato comparado ao resto do fluxo (rede/criptografia).
+                    connected.events().collect {
+                        try {
+                            _lightningState.value = LightningState.Connected(connected.balanceSats(ensureSynced = false))
+                        } catch (_: Exception) {}
+                    }
+                }
+            } catch (e: Exception) {
+                lightningWallet = null
+                _lightningState.value = LightningState.Error(humanizeError(e))
+            }
+        }
+    }
+
+    suspend fun lightningReceiveBolt11(amountSats: Long?, description: String): String =
+        lightningWallet?.receiveBolt11(amountSats, description)
+            ?: throw IllegalStateException("Lightning não conectado")
+
+    suspend fun lightningReceiveSparkAddress(): String =
+        lightningWallet?.receiveSparkAddress()
+            ?: throw IllegalStateException("Lightning não conectado")
+
+    /** Endereço de depósito on-chain (peg-in) — sempre o mesmo, ver
+     *  [com.pokewallet.lightning.LightningWallet.receiveOnchainDepositAddress]. */
+    suspend fun lightningReceiveOnchainDepositAddress(): String =
+        lightningWallet?.receiveOnchainDepositAddress()
+            ?: throw IllegalStateException("Lightning não conectado")
+
+    /**
+     * Endereço on-chain FIXO desta carteira (sempre índice 0 da cadeia
+     * externa) — usado só pelo saque Lightning→on-chain (peg-out), NUNCA
+     * pelo botão "Receber" normal (que sempre avança o índice via
+     * [WalletStorage.reserveNextExternalIndex]). Fixo de propósito: um
+     * saque pequeno pra um endereço NOVO a cada vez arriscaria empurrar o
+     * índice externo adiante rápido demais sem o usuário notar — o scanner
+     * varre um gap limit fixo (ver WalletScanner), então um índice usado
+     * além dele fica invisível pro saldo até um rescan completo manual.
+     * Índice 0 é sempre coberto por qualquer gap limit razoável.
+     */
+    fun getFixedPegOnchainAddress(): String? {
+        if (!walletSwitchMutex.tryLock()) return null
+        return try {
+            val wallet = WalletStorage.load()
+            if (wallet.isWatchOnly) return null
+            val seed = SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
+            try {
+                ReceiveAddressService.addressAt(
+                    seed      = seed,
+                    spendType = wallet.spendType,
+                    network   = wallet.network,
+                    index     = 0
+                )
+            } finally {
+                seed.fill(0)
+            }
+        } catch (_: Exception) {
+            null
+        } finally {
+            walletSwitchMutex.unlock()
+        }
+    }
+
+    suspend fun lightningPrepareSend(raw: String, amountSatsOverride: Long?): com.pokewallet.lightning.PreparedLightningPayment =
+        lightningWallet?.prepareSend(raw, amountSatsOverride)
+            ?: throw IllegalStateException("Lightning não conectado")
+
+    /** Prepara o saque de TODO o saldo Lightning pro endereço on-chain FIXO
+     *  desta carteira (peg-out "sacar tudo") — ver
+     *  [com.pokewallet.lightning.LightningWallet.prepareSweepToOnchain]. */
+    suspend fun lightningPrepareSweepToOnchain(): com.pokewallet.lightning.PreparedLightningPayment {
+        val active = lightningWallet ?: throw IllegalStateException("Lightning não conectado")
+        val address = getFixedPegOnchainAddress() ?: throw IllegalStateException("Não foi possível obter o endereço on-chain desta carteira.")
+        return active.prepareSweepToOnchain(address)
+    }
+
+    suspend fun lightningConfirmSend(prepared: com.pokewallet.lightning.PreparedLightningPayment): breez_sdk_spark.Payment {
+        val active = lightningWallet ?: throw IllegalStateException("Lightning não conectado")
+        val payment = active.confirmSend(prepared)
+        try {
+            _lightningState.value = LightningState.Connected(active.balanceSats(ensureSynced = false))
+        } catch (_: Exception) {}
+        return payment
     }
 
     /** Nº de 429 (rate limit) consecutivos do autoScanJob — controla o

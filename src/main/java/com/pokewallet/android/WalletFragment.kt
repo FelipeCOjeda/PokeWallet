@@ -31,6 +31,8 @@ import com.pokewallet.R
 import com.pokewallet.crypto.FeeTimeEstimator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -126,6 +128,7 @@ class WalletFragment : Fragment() {
         val tvBalanceSats    = view.findViewById<TextView>(R.id.tv_balance_sats)
         val tvBalanceBtc     = view.findViewById<TextView>(R.id.tv_balance_btc)
         val tvBalancePending = view.findViewById<TextView>(R.id.tv_balance_pending)
+        val tvBalanceLightningBreakdown = view.findViewById<TextView>(R.id.tv_balance_lightning_breakdown)
         val progressScan     = view.findViewById<ProgressBar>(R.id.progress_scan)
         val tvScanStatus     = view.findViewById<TextView>(R.id.tv_scan_status)
         val tvLastScan       = view.findViewById<TextView>(R.id.tv_last_scan)
@@ -158,6 +161,13 @@ class WalletFragment : Fragment() {
         val etSpRescanHeight = view.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.et_sp_rescan_height)
         val btnSpRescanFromHeight = view.findViewById<MaterialButton>(R.id.btn_sp_rescan_from_height)
         val cbSpConfirmViaTor = view.findViewById<CheckBox>(R.id.cb_sp_confirm_via_tor)
+        val tvLightningStatus = view.findViewById<TextView>(R.id.tv_lightning_status)
+        val btnLightningConnect = view.findViewById<MaterialButton>(R.id.btn_lightning_connect)
+        val rowLightningActions = view.findViewById<View>(R.id.row_lightning_actions)
+        val btnLightningReceive = view.findViewById<MaterialButton>(R.id.btn_lightning_receive)
+        val btnLightningSend  = view.findViewById<MaterialButton>(R.id.btn_lightning_send)
+        val btnLightningPegin  = view.findViewById<MaterialButton>(R.id.btn_lightning_pegin)
+        val btnLightningPegout = view.findViewById<MaterialButton>(R.id.btn_lightning_pegout)
         val cardError        = view.findViewById<View>(R.id.card_error)
         val tvError          = view.findViewById<TextView>(R.id.tv_error)
         val bottomNav        = view.findViewById<BottomNavigationView>(R.id.bottom_nav)
@@ -252,6 +262,23 @@ class WalletFragment : Fragment() {
             BlindBitOraclePrefs.setConfirmViaTorEnabled(requireContext(), checked)
         }
 
+        btnLightningConnect.setOnClickListener { viewModel.connectLightning() }
+        btnLightningReceive.setOnClickListener { showLightningReceiveDialog() }
+        btnLightningSend.setOnClickListener { showLightningSendDialog() }
+        btnLightningPegin.setOnClickListener { showPegInConfirm() }
+        btnLightningPegout.setOnClickListener { showPegOutConfirm() }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.lightningState.collectLatest { state ->
+                updateLightningUi(state, tvLightningStatus, btnLightningConnect, rowLightningActions)
+                // Saldo Lightning entra na tela HOME (soma com o on-chain, ver
+                // updateTotalBalanceDisplay) — precisa recalcular aqui também,
+                // não só no collector de walletState, senão o total só
+                // atualiza da próxima vez que o saldo ON-CHAIN mudar.
+                updateTotalBalanceDisplay(tvBalanceSats, tvBalanceBtc, tvBalanceLightningBreakdown)
+            }
+        }
+
         val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
         viewLifecycleOwner.lifecycleScope.launch {
@@ -262,9 +289,7 @@ class WalletFragment : Fragment() {
                         tvNetworkBadge.text  = state.network.name
 
                         if (state.balanceSats != null) {
-                            val btc = state.balanceSats / 100_000_000.0
-                            tvBalanceSats.text = "%,d sat".format(state.balanceSats)
-                            tvBalanceBtc.text  = "%.8f BTC".format(btc)
+                            updateTotalBalanceDisplay(tvBalanceSats, tvBalanceBtc, tvBalanceLightningBreakdown)
 
                             if (state.pendingSats != null && state.pendingSats > 0L) {
                                 tvBalancePending.text       = "⏳ Pendente: +%,d sat".format(state.pendingSats)
@@ -1764,6 +1789,424 @@ class WalletFragment : Fragment() {
             .setView(tv)
             .setPositiveButton("OK", null)
             .show()
+    }
+
+    /** Saldo mostrado na tela HOME = on-chain + Lightning somados — pedido
+     *  explícito do Felipe depois do primeiro teste real ("não entendi como
+     *  misturo o saldo com o saldo onchain"). São dois saldos TECNICAMENTE
+     *  separados por baixo (Spark é uma L2 à parte, sem mover fundo nenhum
+     *  entre os dois só por causa disso — ver Mochila) — aqui é só exibição,
+     *  por isso a linha de detalhamento [tv_balance_lightning_breakdown]
+     *  continua mostrando quanto do total é Lightning. Lê os StateFlows
+     *  direto (`.value`) em vez de receber os saldos como parâmetro, pra dar
+     *  pra chamar de QUALQUER um dos dois collectors (walletState OU
+     *  lightningState) sem duplicar a lógica de combinação em cada um. */
+    private fun updateTotalBalanceDisplay(
+        tvBalanceSats: TextView,
+        tvBalanceBtc: TextView,
+        tvBalanceLightningBreakdown: TextView,
+    ) {
+        val onChainSats = (viewModel.walletState.value as? WalletState.Loaded)?.balanceSats ?: return
+        val lightningSats = (viewModel.lightningState.value as? LightningState.Connected)?.balanceSats ?: 0L
+        val total = onChainSats + lightningSats
+
+        tvBalanceSats.text = "%,d sat".format(total)
+        tvBalanceBtc.text  = "%.8f BTC".format(total / 100_000_000.0)
+
+        if (lightningSats > 0L) {
+            tvBalanceLightningBreakdown.text       = "⚡ inclui %,d sat via Lightning".format(lightningSats)
+            tvBalanceLightningBreakdown.visibility = View.VISIBLE
+        } else {
+            tvBalanceLightningBreakdown.visibility = View.GONE
+        }
+    }
+
+    /** Reflete o [LightningState] atual nos widgets da seção "⚡ LIGHTNING"
+     *  da Mochila — chamado a cada emissão de viewModel.lightningState,
+     *  então cobre sozinho tanto a entrada na tela quanto qualquer mudança
+     *  de estado (conectando, saldo mudou via evento do SDK, etc.). */
+    private fun updateLightningUi(
+        state: LightningState,
+        statusView: TextView,
+        connectButton: MaterialButton,
+        actionsRow: View,
+    ) {
+        when (state) {
+            is LightningState.Unavailable -> {
+                statusView.text = "⚠️ Lightning indisponível — exige a seed desta carteira neste aparelho e rede MAINNET (Spark ainda não tem testnet/signet)."
+                connectButton.visibility = View.GONE
+                actionsRow.visibility    = View.GONE
+            }
+            is LightningState.Disconnected -> {
+                statusView.text = "⚡ Desligado (Breez SDK - Spark, self-custodial)."
+                connectButton.visibility = View.VISIBLE
+                connectButton.isEnabled  = true
+                connectButton.text       = "⚡ Ativar Lightning"
+                actionsRow.visibility    = View.GONE
+            }
+            is LightningState.Connecting -> {
+                statusView.text = "⚡ Conectando…"
+                connectButton.visibility = View.VISIBLE
+                connectButton.isEnabled  = false
+                connectButton.text       = "⚡ Conectando…"
+                actionsRow.visibility    = View.GONE
+            }
+            is LightningState.Connected -> {
+                statusView.text = "⚡ Conectado — saldo: %,d sat".format(state.balanceSats)
+                connectButton.visibility = View.GONE
+                actionsRow.visibility    = View.VISIBLE
+            }
+            is LightningState.Error -> {
+                statusView.text = "⚠️ ${state.message}"
+                connectButton.visibility = View.VISIBLE
+                connectButton.isEnabled  = true
+                connectButton.text       = "⚡ Tentar de novo"
+                actionsRow.visibility    = View.GONE
+            }
+        }
+    }
+
+    /** Diálogo "📥 Receber" da seção Lightning — invoice BOLT11 (com valor/
+     *  descrição opcionais) OU endereço Spark (sem valor fixo, sem
+     *  expiração), gerados sob demanda porque, ao contrário do endereço
+     *  Bitcoin normal (derivado localmente, instantâneo), os dois exigem
+     *  uma chamada suspend pra Breez SDK já conectada. */
+    private fun showLightningReceiveDialog() {
+        val dialogView          = layoutInflater.inflate(R.layout.dialog_lightning_receive, null)
+        val groupInput          = dialogView.findViewById<View>(R.id.group_lightning_receive_input)
+        val etAmount            = dialogView.findViewById<TextInputEditText>(R.id.et_lightning_amount)
+        val etDescription       = dialogView.findViewById<TextInputEditText>(R.id.et_lightning_description)
+        val btnGenerateInvoice  = dialogView.findViewById<MaterialButton>(R.id.btn_lightning_generate_invoice)
+        val btnUseSpark         = dialogView.findViewById<MaterialButton>(R.id.btn_lightning_use_spark)
+        val progress            = dialogView.findViewById<ProgressBar>(R.id.pb_lightning_receive)
+        val tvError             = dialogView.findViewById<TextView>(R.id.tv_lightning_receive_error)
+        val groupResult         = dialogView.findViewById<View>(R.id.group_lightning_receive_result)
+        val imgQr               = dialogView.findViewById<ImageView>(R.id.img_lightning_qr)
+        val tvLabel             = dialogView.findViewById<TextView>(R.id.tv_lightning_receive_label)
+        val tvValue             = dialogView.findViewById<TextView>(R.id.tv_lightning_receive_value)
+        val btnCopy             = dialogView.findViewById<MaterialButton>(R.id.btn_copy_lightning_receive)
+        val btnReset            = dialogView.findViewById<MaterialButton>(R.id.btn_lightning_receive_reset)
+
+        val dialog = AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
+            .setView(dialogView)
+            .create()
+
+        var currentValue = ""
+
+        fun showResult(label: String, value: String) {
+            currentValue = value
+            tvLabel.text = label
+            tvValue.text = value
+            try {
+                val sizePx = resources.displayMetrics.density.let { (220 * it).toInt() }
+                imgQr.setImageBitmap(generateQrBitmap(value, sizePx))
+            } catch (_: Exception) {
+                // QR é só conveniência — o valor selecionável abaixo continua
+                // funcionando pra copiar/compartilhar mesmo se a geração falhar.
+            }
+            groupInput.visibility  = View.GONE
+            groupResult.visibility = View.VISIBLE
+        }
+
+        fun runGeneration(block: suspend () -> Pair<String, String>) {
+            tvError.visibility = View.GONE
+            progress.visibility = View.VISIBLE
+            btnGenerateInvoice.isEnabled = false
+            btnUseSpark.isEnabled = false
+            lifecycleScope.launch {
+                try {
+                    val (label, value) = block()
+                    showResult(label, value)
+                } catch (e: Exception) {
+                    tvError.text = e.message ?: "Erro ao gerar recebimento Lightning."
+                    tvError.visibility = View.VISIBLE
+                } finally {
+                    progress.visibility = View.GONE
+                    btnGenerateInvoice.isEnabled = true
+                    btnUseSpark.isEnabled = true
+                }
+            }
+        }
+
+        btnGenerateInvoice.setOnClickListener {
+            val amount = etAmount.text?.toString()?.trim()?.toLongOrNull()
+            val description = etDescription.text?.toString()?.trim().orEmpty()
+            runGeneration {
+                "INVOICE (BOLT11)" to viewModel.lightningReceiveBolt11(amount, description)
+            }
+        }
+
+        btnUseSpark.setOnClickListener {
+            runGeneration {
+                "ENDEREÇO SPARK" to viewModel.lightningReceiveSparkAddress()
+            }
+        }
+
+        btnCopy.setOnClickListener {
+            val cm = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("Lightning", currentValue))
+            Toast.makeText(requireContext(), "Copiado!", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+        }
+
+        btnReset.setOnClickListener {
+            groupResult.visibility = View.GONE
+            groupInput.visibility  = View.VISIBLE
+        }
+
+        dialog.show()
+        dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+    }
+
+    /** Diálogo "📤 Enviar" da seção Lightning — dois passos (mesmo espírito
+     *  do envio on-chain): "Verificar" chama prepareSend (mostra valor/taxa
+     *  sem mover fundos), "Confirmar" só então chama confirmSend. Se o
+     *  destino não fixa valor (invoice amountless, endereço Spark), o
+     *  primeiro prepareSend falha e revela o campo de valor pra tentar de
+     *  novo — evita mostrar o campo sempre, quando a maioria dos destinos
+     *  (invoice normal) já traz o valor embutido. */
+    private fun showLightningSendDialog() {
+        val dialogView       = layoutInflater.inflate(R.layout.dialog_lightning_send, null)
+        val groupInput       = dialogView.findViewById<View>(R.id.group_lightning_send_input)
+        val etDestination    = dialogView.findViewById<TextInputEditText>(R.id.et_lightning_destination)
+        val btnScanQr        = dialogView.findViewById<MaterialButton>(R.id.btn_lightning_scan_qr)
+        val tilAmount        = dialogView.findViewById<TextInputLayout>(R.id.til_lightning_send_amount)
+        val etAmount         = dialogView.findViewById<TextInputEditText>(R.id.et_lightning_send_amount)
+        val btnPrepare       = dialogView.findViewById<MaterialButton>(R.id.btn_lightning_prepare_send)
+        val progress         = dialogView.findViewById<ProgressBar>(R.id.pb_lightning_send)
+        val tvError          = dialogView.findViewById<TextView>(R.id.tv_lightning_send_error)
+        val groupConfirm     = dialogView.findViewById<View>(R.id.group_lightning_send_confirm)
+        val tvPreview        = dialogView.findViewById<TextView>(R.id.tv_lightning_send_preview)
+        val btnConfirm       = dialogView.findViewById<MaterialButton>(R.id.btn_lightning_confirm_send)
+        val btnCancel        = dialogView.findViewById<MaterialButton>(R.id.btn_lightning_cancel_send)
+
+        // Cancelable (ao contrário dos outros diálogos desta seção que usam
+        // setCancelable(false)): esses sempre têm um botão "Cancelar" visível
+        // desde a primeira tela, mas aqui o botão só existe na etapa de
+        // confirmação (group_lightning_send_confirm) — sem cancelable, o
+        // usuário ficaria preso na etapa de colar o destino sem jeito de sair.
+        val dialog = AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
+            .setView(dialogView)
+            .create()
+
+        btnScanQr.setOnClickListener {
+            launchQrScan("Escaneie o QR Lightning") { content -> etDestination.setText(content) }
+        }
+
+        var prepared: com.pokewallet.lightning.PreparedLightningPayment? = null
+
+        btnPrepare.setOnClickListener {
+            val raw = etDestination.text?.toString()?.trim().orEmpty()
+            if (raw.isEmpty()) {
+                tvError.text = "Cole ou escaneie um destino Lightning."
+                tvError.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            val amountOverride = if (tilAmount.visibility == View.VISIBLE)
+                etAmount.text?.toString()?.trim()?.toLongOrNull()
+            else null
+
+            tvError.visibility = View.GONE
+            progress.visibility = View.VISIBLE
+            btnPrepare.isEnabled = false
+            lifecycleScope.launch {
+                try {
+                    val response = viewModel.lightningPrepareSend(raw, amountOverride)
+                    prepared = response
+                    val preview = com.pokewallet.lightning.previewOf(response)
+                    tvPreview.text = (if (preview.amountSats != null) "Valor: %,d sat\n".format(preview.amountSats) else "") +
+                        "Taxa estimada: %,d sat".format(preview.feeSats)
+                    groupInput.visibility   = View.GONE
+                    groupConfirm.visibility = View.VISIBLE
+                } catch (e: Exception) {
+                    // Destino sem valor embutido (invoice amountless, endereço
+                    // Spark) faz o SDK recusar sem um amount explícito — em vez
+                    // de mostrar isso como erro genérico, revela o campo de
+                    // valor (fica escondido por padrão pra não confundir quem
+                    // colou uma invoice normal, que já tem valor).
+                    if (tilAmount.visibility != View.VISIBLE) {
+                        tilAmount.visibility = View.VISIBLE
+                        tvError.text = "Este destino não tem valor fixo — informe quanto enviar."
+                    } else {
+                        tvError.text = e.message ?: "Erro ao verificar destino Lightning."
+                    }
+                    tvError.visibility = View.VISIBLE
+                } finally {
+                    progress.visibility = View.GONE
+                    btnPrepare.isEnabled = true
+                }
+            }
+        }
+
+        btnConfirm.setOnClickListener {
+            val toSend = prepared ?: return@setOnClickListener
+            btnConfirm.isEnabled = false
+            btnCancel.isEnabled  = false
+            lifecycleScope.launch {
+                try {
+                    viewModel.lightningConfirmSend(toSend)
+                    Toast.makeText(requireContext(), "⚡ Pagamento enviado!", Toast.LENGTH_LONG).show()
+                    dialog.dismiss()
+                } catch (e: Exception) {
+                    showSelectableTextDialog("⚠️ Erro ao enviar Lightning", e.message ?: "Erro desconhecido.")
+                    btnConfirm.isEnabled = true
+                    btnCancel.isEnabled  = true
+                }
+            }
+        }
+
+        btnCancel.setOnClickListener {
+            prepared = null
+            groupConfirm.visibility = View.GONE
+            groupInput.visibility   = View.VISIBLE
+        }
+
+        dialog.show()
+        dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+    }
+
+    /** Diálogo de progresso mínimo (só texto, sem layout próprio) — usado
+     *  pelos dois fluxos de peg abaixo enquanto uma chamada suspend roda,
+     *  não-cancelável pra não deixar o usuário fechar no meio de um envio
+     *  de verdade. [text] pode ser atualizado depois via o TextView
+     *  retornado. */
+    private fun showProgressDialog(initialText: String): Pair<AlertDialog, TextView> {
+        val tv = TextView(requireContext()).apply {
+            text = initialText
+            setPadding((24 * resources.displayMetrics.density).toInt(), (20 * resources.displayMetrics.density).toInt(), (24 * resources.displayMetrics.density).toInt(), (20 * resources.displayMetrics.density).toInt())
+            setTextColor(ContextCompat.getColor(requireContext(), R.color.gb_border))
+            gravity = Gravity.CENTER
+        }
+        val dialog = AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
+            .setView(tv)
+            .setCancelable(false)
+            .show()
+        return dialog to tv
+    }
+
+    /**
+     * "⬇ Depositar tudo" — peg-in num toque: sem escolher valor, sem ver
+     * endereço nenhum (pedido explícito do Felipe). Por baixo: pega o
+     * endereço de depósito Spark FIXO (sempre o mesmo, nunca um novo — ver
+     * [com.pokewallet.lightning.LightningWallet.receiveOnchainDepositAddress])
+     * e REUTILIZA [WalletViewModel.sendFunds] com `sweep = true` — a MESMA
+     * função que o envio on-chain normal usa, só que chamada direto (sem
+     * abrir o diálogo de envio, que tem campo de endereço/valor/UTXO que
+     * aqui não fazem sentido nenhum). Modo Tor + taxa "rápida" da mempool
+     * como padrão, iguais ao padrão do diálogo de envio normal.
+     */
+    private fun showPegInConfirm() {
+        val onChainSats = (viewModel.walletState.value as? WalletState.Loaded)?.balanceSats ?: 0L
+        val minSats = com.pokewallet.lightning.LightningWallet.MIN_PEG_AMOUNT_SATS
+        if (onChainSats < minSats) {
+            Toast.makeText(requireContext(), "Saldo on-chain insuficiente — mínimo %,d sat pra depositar.".format(minSats), Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val (progress, _) = showProgressDialog("Buscando endereço de depósito…")
+        lifecycleScope.launch {
+            val depositAddress = try {
+                viewModel.lightningReceiveOnchainDepositAddress()
+            } catch (e: Exception) {
+                progress.dismiss()
+                showSelectableTextDialog("⚠️ Erro ao depositar", e.message ?: "Erro desconhecido.")
+                return@launch
+            }
+            progress.dismiss()
+
+            AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
+                .setTitle("⬇ Depositar tudo")
+                .setMessage("Vai transferir todo o saldo on-chain (%,d sat) pro saldo Lightning. Taxa de rede Bitcoin + taxa do protocolo Spark se aplicam. Depois de enviado não tem como cancelar.".format(onChainSats))
+                .setPositiveButton("Confirmar") { _, _ ->
+                    val (sendProgress, sendProgressText) = showProgressDialog("Enviando…")
+                    val feeRate = viewModel.getCurrentFeeEstimates().fastest
+                    // Internet convencional, NÃO Tor — achado real testando
+                    // no aparelho (2026-09-08): "Depositar tudo" copiava o
+                    // padrão do diálogo de envio normal (que É Tor por
+                    // padrão), mas exige Orbot rodando; sem isso a chamada
+                    // falha com erro de DNS/gRPC. Feedback do Felipe: esse
+                    // depósito não deveria depender de Tor.
+                    viewModel.sendFunds(depositAddress, amountSats = null, sweep = true, mode = SendMode.Internet, feeRateSatPerVbyte = feeRate)
+                    // first{} em vez de collectLatest: essa coleta PRECISA
+                    // parar sozinha assim que um estado terminal chegar —
+                    // sendState é um StateFlow compartilhado com o diálogo de
+                    // envio normal, um collectLatest aqui ficaria "vivo" pra
+                    // sempre (viewLifecycleOwner só morre com o fragment) e
+                    // reagiria de novo a um envio FUTURO feito pelo diálogo
+                    // normal, mostrando Toast/erro duplicado da vez errada.
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val result = viewModel.sendState
+                            .onEach { state ->
+                                when (state) {
+                                    is SendState.Sending -> sendProgressText.text = "Enviando…"
+                                    is SendState.PublishingToRelays -> sendProgressText.text = getString(R.string.publishing_to_relays)
+                                    is SendState.AwaitingRelayConfirmation -> sendProgressText.text = getString(R.string.awaiting_relay_confirmation)
+                                    else -> {}
+                                }
+                            }
+                            .first { it is SendState.Success || it is SendState.Error }
+                        sendProgress.dismiss()
+                        viewModel.resetSendState()
+                        when (result) {
+                            is SendState.Success ->
+                                Toast.makeText(requireContext(), "⬇ Depósito enviado! Aparece no saldo Lightning depois da rede confirmar.", Toast.LENGTH_LONG).show()
+                            is SendState.Error ->
+                                showSelectableTextDialog("⚠️ Erro ao depositar", result.message)
+                            else -> {}
+                        }
+                    }
+                }
+                .setNegativeButton("Cancelar", null)
+                .show()
+        }
+    }
+
+    /**
+     * "⬆ Sacar tudo" — peg-out num toque: sem escolher valor, destino
+     * sempre o endereço on-chain FIXO desta carteira (índice 0, nunca
+     * avança — ver [WalletViewModel.getFixedPegOnchainAddress]). Usa
+     * [WalletViewModel.lightningPrepareSweepToOnchain], que já resolve o
+     * valor líquido (saldo - taxa) sozinho.
+     */
+    private fun showPegOutConfirm() {
+        val lightningBalance = (viewModel.lightningState.value as? LightningState.Connected)?.balanceSats ?: 0L
+        val minSats = com.pokewallet.lightning.LightningWallet.MIN_PEG_AMOUNT_SATS
+        if (lightningBalance < minSats) {
+            Toast.makeText(requireContext(), "Saldo Lightning insuficiente — mínimo %,d sat pra sacar.".format(minSats), Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val (progress, _) = showProgressDialog("Calculando taxa de saque…")
+        lifecycleScope.launch {
+            val prepared = try {
+                viewModel.lightningPrepareSweepToOnchain()
+            } catch (e: Exception) {
+                progress.dismiss()
+                showSelectableTextDialog("⚠️ Erro ao sacar", e.message ?: "Erro desconhecido.")
+                return@launch
+            }
+            progress.dismiss()
+
+            val preview = com.pokewallet.lightning.previewOf(prepared)
+            AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
+                .setTitle("⬆ Sacar tudo")
+                .setMessage("Vai transferir %,d sat do saldo Lightning pro on-chain desta carteira (taxa de %,d sat já descontada do saldo de %,d sat). Depois de enviado não tem como cancelar.".format(preview.amountSats ?: 0L, preview.feeSats, lightningBalance))
+                .setPositiveButton("Confirmar") { _, _ ->
+                    val (sendProgress, _) = showProgressDialog("Sacando…")
+                    lifecycleScope.launch {
+                        try {
+                            viewModel.lightningConfirmSend(prepared)
+                            sendProgress.dismiss()
+                            Toast.makeText(requireContext(), "⬆ Saque enviado pro on-chain!", Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            sendProgress.dismiss()
+                            showSelectableTextDialog("⚠️ Erro ao sacar pro on-chain", e.message ?: "Erro desconhecido.")
+                        }
+                    }
+                }
+                .setNegativeButton("Cancelar", null)
+                .show()
+        }
     }
 
     /** Configura o host:porta do proxy SOCKS do Orbot (Mochila, seção

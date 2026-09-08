@@ -142,6 +142,20 @@
                         android:layout_marginTop="6dp"
                         android:visibility="gone" />
 
+                    <!-- "SALDO" acima já é o TOTAL (on-chain + Lightning) —
+                         esta linha só detalha quanto disso é Lightning,
+                         pra não esconder que são dois saldos tecnicamente
+                         separados (Spark é uma L2 à parte, ver Mochila).
+                         Só aparece com Lightning conectado E saldo > 0. -->
+                    <TextView
+                        android:id="@+id/tv_balance_lightning_breakdown"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="12sp"
+                        android:textColor="@color/accent_yellow"
+                        android:layout_marginTop="6dp"
+                        android:visibility="gone" />
+
                     <!-- Barra de progresso de scan -->
                     <ProgressBar
                         android:id="@+id/progress_scan"
@@ -598,6 +612,112 @@
                         android:layout_height="48dp"
                         android:text="🔄 Reescanear desde essa altura"
                         android:textSize="10sp" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1.5dp"
+                        android:background="@color/gb_border_soft"
+                        android:layout_marginVertical="12dp" />
+
+                    <!-- Lightning via Breez SDK - Spark (self-custodial, BOLT11 +
+                         endereço Spark + LN address) — feature opt-in, só conecta
+                         quando o usuário toca "Ativar". Rede sem suporte (só
+                         MAINNET/REGTEST) ou watch-only escondem o botão de ativar
+                         e mostram só o aviso, ver WalletFragment.updateLightningUi. -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="⚡ LIGHTNING"
+                        android:textSize="10sp"
+                        style="@style/Gameboy.Label"
+                        android:layout_marginBottom="10dp" />
+
+                    <TextView
+                        android:id="@+id/tv_lightning_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="12sp"
+                        android:textColor="@color/gb_border_soft"
+                        android:layout_marginBottom="10dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_lightning_connect"
+                        style="@style/Gameboy.Button"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:text="⚡ Ativar Lightning"
+                        android:textSize="10sp"
+                        app:backgroundTint="@color/green_status"
+                        android:layout_marginBottom="10dp" />
+
+                    <LinearLayout
+                        android:id="@+id/row_lightning_actions"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginBottom="10dp">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btn_lightning_receive"
+                                style="@style/Gameboy.Button.Outline"
+                                android:layout_width="0dp"
+                                android:layout_height="48dp"
+                                android:layout_weight="1"
+                                android:layout_marginEnd="6dp"
+                                android:text="📥 Receber"
+                                android:textSize="10sp" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btn_lightning_send"
+                                style="@style/Gameboy.Button.Outline"
+                                android:layout_width="0dp"
+                                android:layout_height="48dp"
+                                android:layout_weight="1"
+                                android:layout_marginStart="6dp"
+                                android:text="📤 Enviar"
+                                android:textSize="10sp" />
+
+                        </LinearLayout>
+
+                        <!-- Peg-in/peg-out — um toque transfere TODO o saldo
+                             (não pede valor nem mostra endereço, pedido
+                             explícito do Felipe); endereço on-chain usado
+                             por baixo é sempre FIXO nos dois sentidos, ver
+                             WalletFragment.showPegInConfirm/showPegOutConfirm. -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btn_lightning_pegin"
+                                style="@style/Gameboy.Button.Outline"
+                                android:layout_width="0dp"
+                                android:layout_height="48dp"
+                                android:layout_weight="1"
+                                android:layout_marginEnd="6dp"
+                                android:text="⬇ Depositar tudo"
+                                android:textSize="9sp" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btn_lightning_pegout"
+                                style="@style/Gameboy.Button.Outline"
+                                android:layout_width="0dp"
+                                android:layout_height="48dp"
+                                android:layout_weight="1"
+                                android:layout_marginStart="6dp"
+                                android:text="⬆ Sacar tudo"
+                                android:textSize="9sp" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
 
                     <View
                         android:layout_width="match_parent"
