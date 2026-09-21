@@ -141,6 +141,17 @@ data class WalletData(
      *  de fallback pra carteira restaurada/watch-only/antiga sem esse
      *  campo. */
     var birthHeight: Long? = null,
+    /** true só quando esta carteira foi CRIADA aqui (nunca restaurada) e a
+     *  captura de [birthHeight] no momento da criação falhou por falta de
+     *  rede — sinaliza pro próximo scan normal (WalletViewModel.doScan())
+     *  tentar de novo, gratuito (reusa a mesma sessão de rede do scan),
+     *  até conseguir. A retentativa só faz sentido ANTES do primeiro sync
+     *  manual de Silent Payments (spScanTipHeight ainda 0): depois disso,
+     *  gravar um birthHeight tardio seria pior que deixar null (ver
+     *  SilentPaymentsSync.resolveStartHeight — só usa birthHeight quando
+     *  não há progresso salvo; um valor tardio criaria um buraco invisível
+     *  pra sempre, mesma classe do bug de restauração de 2026-09-04). */
+    var birthHeightPending: Boolean = false,
 
     // -----------------------------
     // Histórico local persistido (ver TxLogEntry acima) — cresce por

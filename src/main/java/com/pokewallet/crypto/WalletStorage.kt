@@ -243,6 +243,7 @@ object WalletStorage {
             spUtxos            = spUtxos,
             spScanTipHeight    = json.optLong("spScanTipHeight", 0L),
             birthHeight        = if (json.has("birthHeight") && !json.isNull("birthHeight")) json.getLong("birthHeight") else null,
+            birthHeightPending = json.optBoolean("birthHeightPending", false),
             txLog              = txLog,
             raw                = json
         )
@@ -272,6 +273,7 @@ object WalletStorage {
         }))
         wallet.raw.put("spScanTipHeight", wallet.spScanTipHeight)
         wallet.raw.put("birthHeight", wallet.birthHeight ?: JSONObject.NULL)
+        wallet.raw.put("birthHeightPending", wallet.birthHeightPending)
         wallet.raw.put("txLog", org.json.JSONArray(wallet.txLog.map { e ->
             JSONObject()
                 .put("txid", e.txid)

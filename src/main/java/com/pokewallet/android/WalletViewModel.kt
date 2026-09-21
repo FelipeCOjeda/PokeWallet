@@ -754,6 +754,25 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             val xpub = wallet.xpub ?: return@withLock
             val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
 
+            // Retentativa de birthHeight (ver WalletData.birthHeightPending):
+            // só carteira Taproot (única que faz Silent Payments) que ainda
+            // não teve NENHUM sync manual de SP (spScanTipHeight==0) — depois
+            // do primeiro sync, capturar birthHeight tardio seria pior que
+            // deixar null (ver doc do campo). Gratuito: reusa a mesma sessão
+            // de rede deste scan normal, sem pedir nada ao usuário. Falha aqui
+            // não derruba o scan — só tenta de novo no próximo ciclo.
+            if (wallet.birthHeightPending && wallet.birthHeight == null &&
+                wallet.spendType == SpendType.BIP86 && wallet.spScanTipHeight == 0L
+            ) {
+                try {
+                    val tipHeight = withContext(Dispatchers.IO) { NodePrefs.dataSource(getApplication()).getTipHeight(network) }
+                    wallet.birthHeight = tipHeight
+                    wallet.birthHeightPending = false
+                } catch (_: Exception) {
+                    // Ainda sem rede pra isso — tenta de novo no próximo scan.
+                }
+            }
+
             // needsFullRescan (só true logo após migrar um wallet.json de
             // antes do scan incremental existir) força ignorar o estado
             // incremental UMA vez — sem isso, endereços antigos com saldo
@@ -907,19 +926,22 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                     // Altura de nascimento — ponto de partida do primeiro scan
                     // de Silent Payments (ver WalletData.birthHeight): uma
                     // carteira RECÉM-CRIADA não pode ter recebido nada antes
-                    // de existir. Best-effort — se a rede falhar aqui, a
-                    // criação da carteira não pode travar por causa disso;
-                    // SilentPaymentsSync cai pro lookback fixo (mais lento,
-                    // mas ainda funciona) quando birthHeight fica null.
+                    // de existir. Best-effort AQUI (se a rede falhar, a
+                    // criação da carteira não pode travar por causa disso) —
+                    // mas não é best-effort ÚNICO: se falhar agora,
+                    // birthHeightPending fica marcado e WalletViewModel.doScan()
+                    // insiste de novo nos próximos scans até conseguir (ver
+                    // doc de WalletData.birthHeightPending), em vez de desistir
+                    // pra sempre no primeiro erro.
                     withContext(Dispatchers.IO) {
                         try {
                             val tipHeight = NodePrefs.dataSource(context).getTipHeight(network)
                             wallet.birthHeight = tipHeight
-                            WalletStorage.save(wallet)
+                            wallet.birthHeightPending = false
                         } catch (_: Exception) {
-                            // Sem rede/timeout no momento da criação — sem problema,
-                            // só fica sem o atalho (ver comentário acima).
+                            wallet.birthHeightPending = true
                         }
+                        WalletStorage.save(wallet)
                     }
                     // WalletInit.run() sempre cria carteira com seed — nunca watch-only.
                     _walletState.value = WalletState.Created(
