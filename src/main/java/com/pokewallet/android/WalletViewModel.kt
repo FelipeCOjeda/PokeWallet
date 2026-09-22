@@ -8,6 +8,7 @@ import com.pokewallet.lightning.supportsLightning
 import com.pokewallet.network.BalanceCrossChecker
 import com.pokewallet.network.BlockstreamClient
 import com.pokewallet.network.ChainDataSource
+import com.pokewallet.network.FailoverChainDataSource
 import com.pokewallet.network.FeeEstimates
 import com.pokewallet.network.RemoteUtxo
 import com.pokewallet.network.SilentPaymentsConfirmer
@@ -1216,10 +1217,21 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             // não afeta saldo/scan normal do resto do app, nem a comunicação
             // com o oracle (que não passa por [ChainDataSource] nenhum). Ver
             // doc de [BlindBitOraclePrefs.isConfirmViaTorEnabled].
-            val dataSource = if (BlindBitOraclePrefs.isConfirmViaTorEnabled(context)) {
+            val primaryDataSource = if (BlindBitOraclePrefs.isConfirmViaTorEnabled(context)) {
                 TorBlockstreamDataSource(TorPrefs.proxy(context))
             } else {
                 NodePrefs.dataSource(context)
+            }
+            // Fallback pra pool de Electrum públicos (ver FailoverChainDataSource):
+            // Floresta não serve tx histórica arbitrária (Utreexo, sem
+            // índice) e Blockstream/mempool.space aplicam rate limit por IP
+            // — os dois casos reais que travavam a confirmação de SP. Só
+            // MAINNET tem uma lista pública curada (PublicElectrumServers);
+            // TESTNET/REGTEST seguem só com a fonte primária.
+            val dataSource = if (network == Network.MAINNET) {
+                FailoverChainDataSource(primaryDataSource)
+            } else {
+                primaryDataSource
             }
 
             val seed = SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
@@ -1249,6 +1261,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 result
             } finally {
                 scanPriv.fill(0)
+                (dataSource as? FailoverChainDataSource)?.close()
             }
         }
     }
