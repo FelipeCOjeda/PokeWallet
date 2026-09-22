@@ -52,6 +52,27 @@ import java.util.concurrent.TimeUnit
  */
 object BlindBitOracleClient {
 
+    /** Um único resolver de DNS fallback pra TODA a vida do processo. Sem
+     *  isso, cada `service()` criava um `DohFallbackDns` novo e perdia o
+     *  cache entre os chunks — exatamente o cenário que fazia um sync de
+     *  300-500 blocos resolver o mesmo host várias vezes e falhar numa das
+     *  resoluções seguintes. */
+    private val dns = DohFallbackDns()
+
+    private val okHttp: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .dns(dns)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            // O gzip transparente do OkHttp não convive com o stream gRPC
+            // do Wire ("Decompressor is not installed for grpc-encoding
+            // gzip") — declarar identity desliga a compressão automática.
+            .addInterceptor { chain ->
+                chain.proceed(chain.request().newBuilder().header("Accept-Encoding", "identity").build())
+            }
+            .build()
+    }
+
     data class OracleInfo(
         val network: String,
         val height: Long,
@@ -80,25 +101,6 @@ object BlindBitOracleClient {
     )
 
     private fun grpcClient(baseUrl: String): GrpcClient {
-        val okHttp = OkHttpClient.Builder()
-            // Fallback de resolução via DNS-over-HTTPS quando o DNS do
-            // aparelho bloqueia/falha pra resolver o host do oracle (erro
-            // real em campo: "Unable to resolve host oracle.setor.dev").
-            .dns(DohFallbackDns())
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            // O gzip transparente do OkHttp (Accept-Encoding automático) não
-            // convive bem com corpo HTTP/2 duplex de streaming gRPC — o
-            // servidor (ou um proxy na frente) responde comprimido e o Wire
-            // não tem decompressor de grpc-encoding gzip instalado, falhando
-            // com "Decompressor is not installed for grpc-encoding gzip"
-            // (confirmado ao vivo contra o oracle público nesta sessão).
-            // Declarar Accept-Encoding manualmente desliga o gzip automático
-            // do OkHttp e sinaliza pro servidor não comprimir.
-            .addInterceptor { chain ->
-                chain.proceed(chain.request().newBuilder().header("Accept-Encoding", "identity").build())
-            }
-            .build()
         return GrpcClient.Builder()
             .client(okHttp)
             .baseUrl(baseUrl)

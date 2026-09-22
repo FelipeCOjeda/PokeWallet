@@ -24,6 +24,19 @@ class DohFallbackDns : Dns {
 
     private val cache = java.util.concurrent.ConcurrentHashMap<String, List<InetAddress>>()
 
+    private data class DohProvider(
+        val baseUrl: String,
+        val requiresJsonHeader: Boolean
+    )
+
+    /** Mais de um provedor: DNS-over-HTTPS do Google costuma funcionar, mas
+     *  alguns provedores/rede móvel bloqueiam `dns.google`; Cloudflare é o
+     *  segundo plano. */
+    private val providers = listOf(
+        DohProvider(baseUrl = "https://dns.google/resolve", requiresJsonHeader = false),
+        DohProvider(baseUrl = "https://cloudflare-dns.com/dns-query", requiresJsonHeader = true)
+    )
+
     // Cliente dedicado pro DoH — usa o Dns padrão do OkHttp (sistema), nunca
     // este objeto, senão a falha de resolver dns.google entraria em loop.
     private val dohClient = OkHttpClient.Builder()
@@ -43,32 +56,49 @@ class DohFallbackDns : Dns {
     private fun resolveViaDoh(hostname: String): List<InetAddress>? {
         val addresses = mutableListOf<InetAddress>()
         for (type in listOf("A" to 1, "AAAA" to 28)) {
-            val url = "https://dns.google/resolve?name=" +
-                URLEncoder.encode(hostname, "UTF-8") + "&type=" + type.first
-            val request = Request.Builder().url(url).build()
-            try {
-                dohClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return null
-                    val body = response.body?.string() ?: return null
-                    val json = JSONObject(body)
-                    val answer = json.optJSONArray("Answer") ?: return null
-                    for (i in 0 until answer.length()) {
-                        val item = answer.getJSONObject(i)
-                        if (item.optInt("type", -1) != type.second) continue
-                        val data = if (item.has("data") && !item.isNull("data")) item.getString("data") else null
-                            ?: continue
-                        try {
-                            addresses.add(InetAddress.getByName(data))
-                        } catch (_: Exception) {
-                            // resposta malformada — ignora e segue
-                        }
-                    }
-                }
-            } catch (_: Exception) {
-                // DoH indisponível (sem rede, DNS do dns.google bloqueado, etc.)
-                return null
+            for (provider in providers) {
+                queryDoh(provider, hostname, type.first, type.second)?.let { addresses.addAll(it) }
+                if (addresses.isNotEmpty()) break
             }
         }
-        return addresses.takeIf { it.isNotEmpty() }
+        return addresses.distinct().takeIf { it.isNotEmpty() }
+    }
+
+    private fun queryDoh(
+        provider: DohProvider,
+        hostname: String,
+        typeName: String,
+        typeNumber: Int
+    ): List<InetAddress>? {
+        val url = provider.baseUrl + "?name=" +
+            URLEncoder.encode(hostname, "UTF-8") + "&type=" + typeName
+        val requestBuilder = Request.Builder().url(url)
+        if (provider.requiresJsonHeader) {
+            requestBuilder.header("Accept", "application/dns-json")
+        }
+        return try {
+            dohClient.newCall(requestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) return null
+                val body = response.body?.string() ?: return null
+                val json = JSONObject(body)
+                val answer = json.optJSONArray("Answer") ?: return null
+                val found = mutableListOf<InetAddress>()
+                for (i in 0 until answer.length()) {
+                    val item = answer.getJSONObject(i)
+                    if (item.optInt("type", -1) != typeNumber) continue
+                    val data = if (item.has("data") && !item.isNull("data")) item.getString("data") else null
+                        ?: continue
+                    try {
+                        found.add(InetAddress.getByName(data))
+                    } catch (_: Exception) {
+                        // resposta malformada — ignora e segue
+                    }
+                }
+                found.takeIf { it.isNotEmpty() }
+            }
+        } catch (_: Exception) {
+            // DoH indisponível (sem rede, DNS do provedor bloqueado, etc.)
+            null
+        }
     }
 }
