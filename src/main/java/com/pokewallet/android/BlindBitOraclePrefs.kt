@@ -29,6 +29,7 @@ object BlindBitOraclePrefs {
     private const val PREFS_NAME       = "pokewallet_prefs"
     private const val KEY_TLS          = "blindbit_oracle_tls"
     private const val KEY_CONFIRM_TOR  = "blindbit_confirm_via_tor"
+    private const val KEY_ELECTRUM_FALLBACK = "blindbit_electrum_fallback"
 
     const val DEFAULT_HOST_MAINNET = "oracle.setor.dev"
     const val DEFAULT_HOST_SIGNET  = "signet.oracle.setor.dev"
@@ -110,5 +111,18 @@ object BlindBitOraclePrefs {
 
     fun setConfirmViaTorEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_CONFIRM_TOR, enabled).apply()
+    }
+
+    /** Fallback pra pool de Electrum públicos na confirmação de Silent
+     *  Payments (ver FailoverChainDataSource). Ativado por padrão: os erros
+     *  de campo ("unable to resolve host" do blockstream/mempool) deixavam o
+     *  sync sem alternativa nenhuma — eram os ÚNICOS servidores consultados.
+     *  Só vale em MAINNET e NUNCA junto de [isConfirmViaTorEnabled] (o
+     *  fallback é clearnet) — o ViewModel aplica essas regras. */
+    fun isElectrumFallbackEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ELECTRUM_FALLBACK, true)
+
+    fun setElectrumFallbackEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ELECTRUM_FALLBACK, enabled).apply()
     }
 }

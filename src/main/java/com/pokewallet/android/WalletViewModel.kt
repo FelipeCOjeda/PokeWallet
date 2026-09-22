@@ -20,8 +20,10 @@ import com.pokewallet.nostr.GeoRelayDirectory
 import com.pokewallet.nostr.NostrEvent
 import com.pokewallet.nostr.NostrKeys
 import com.pokewallet.nostr.NostrRelayClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -245,6 +247,25 @@ private const val AUTO_SCAN_BASE_INTERVAL_MS = 240_000L
 private const val AUTO_SCAN_MAX_BACKOFF_MS = 20 * 60_000L // 20 min
 
 /**
+ * Intervalo do sync automático de Silent Payments. Usa a mesma cadência do
+ * auto-scan on-chain: num cenário normal, cada ciclo pega poucos blocos
+ * novos e o trabalho é incremental (spScanTipHeight). Se o oracle ou a
+ * confirmação falharem, o backoff próprio de SP entra em ação
+ * ([SP_AUTO_SYNC_MAX_BACKOFF_MS]).
+ */
+private const val SP_AUTO_SYNC_INTERVAL_MS = AUTO_SCAN_BASE_INTERVAL_MS
+
+/** Espera máxima entre tentativas do sync automático de Silent Payments. */
+private const val SP_AUTO_SYNC_MAX_BACKOFF_MS = 30 * 60_000L
+
+/** Timeout de cada execução automática — um pouco menor que o manual pra
+ *  não segurar o Mutex de SP por 15 minutos inteiros. */
+private const val SP_AUTO_SYNC_TIMEOUT_MS = 10 * 60_000L
+
+/** Primeira execução roda alguns segundos após carregar a carteira. */
+private const val SP_AUTO_SYNC_FIRST_DELAY_MS = 5_000L
+
+/**
  * Por quanto tempo o resultado do último scan (doScan()) é reaproveitado
  * por buildSignedTx() em vez de disparar um scan completo novo. 1.5x o
  * intervalo base do autoScanJob — cobre o caso comum (enviar logo após a
@@ -293,6 +314,26 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     private val _lightningState = MutableStateFlow<LightningState>(LightningState.Disconnected)
     val lightningState: StateFlow<LightningState> = _lightningState.asStateFlow()
 
+    /** true quando a ÚLTIMA sincronização de Silent Payments recorreu ao
+     *  pool de Electrum públicos (fallback) — exposto no status da Mochila
+     *  pra avisar que o usuário falou com terceiro naquela consulta. */
+    @Volatile private var lastSpSyncUsedFallback = false
+
+    /** Job do sync automático de Silent Payments em segundo plano. */
+    private var spAutoSyncJob: Job? = null
+
+    /** true enquanto uma execução do sync automático está rodando. */
+    @Volatile private var spAutoSyncRunning = false
+
+    /** Nº de falhas consecutivas do sync automático — controla o backoff. */
+    private var spAutoSyncConsecutiveFailures = 0
+
+    /** Timestamp da última execução automática bem-sucedida. */
+    @Volatile private var lastSpAutoSyncTimeMs: Long? = null
+
+    /** Erro da última tentativa automática (ou null quando tudo bem). */
+    @Volatile private var lastSpAutoSyncError: String? = null
+
     /** Não-null só enquanto conectado — [resetPerWalletCaches] garante que
      *  nunca sobrevive a uma troca/esquecimento de carteira (senão um envio
      *  Lightning depois de trocar de carteira sairia da carteira ERRADA). */
@@ -317,6 +358,11 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     // carregar→mutar→salvar pode gravar dado da carteira A no wallet.json
     // da carteira B.
     private val walletSwitchMutex = Mutex()
+
+    /** Serializa execuções automática e manual do sync de Silent Payments,
+     *  pra evitar dois scans SP simultâneos quando o usuário toca em
+     *  "Sincronizar agora" enquanto o job de fundo já está rodando. */
+    private val spSyncMutex = Mutex()
 
     init {
         checkWallet()
@@ -456,6 +502,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                     isWatchOnly  = wallet.isWatchOnly
                 )
                 startAutoScan()
+                startAutoSilentPaymentsSync(enabled = wallet.spendType == SpendType.BIP86)
             } catch (e: Exception) {
                 _walletState.value = WalletState.Error(humanizeError(e))
             }
@@ -468,6 +515,13 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     private fun resetPerWalletCaches() {
         autoScanJob?.cancel()
         autoScanJob = null
+        spAutoSyncJob?.cancel()
+        spAutoSyncJob = null
+        spAutoSyncRunning = false
+        spAutoSyncConsecutiveFailures = 0
+        lastSpAutoSyncTimeMs = null
+        lastSpAutoSyncError = null
+        lastSpSyncUsedFallback = false
         lastScanResult = null
         lastScanResultAtMs = 0L
         lastKnownPendingSats = 0L
@@ -646,6 +700,72 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun nextSpAutoSyncDelayMs(): Long {
+        if (spAutoSyncConsecutiveFailures <= 0) return SP_AUTO_SYNC_INTERVAL_MS
+        val backoff = SP_AUTO_SYNC_INTERVAL_MS * (1L shl minOf(spAutoSyncConsecutiveFailures, 6))
+        return minOf(backoff, SP_AUTO_SYNC_MAX_BACKOFF_MS)
+    }
+
+    /**
+     * Sync automático de Silent Payments em segundo plano. Roda só pra
+     * carteiras que realmente podem GASTAR o que receberem via SP
+     * (BIP86/Taproot) e que tenham seed neste aparelho; BIP84 e watch-only
+     * ficam de fora. O oracle precisa estar configurado pra rede ativa.
+     */
+    private fun startAutoSilentPaymentsSync(enabled: Boolean) {
+        spAutoSyncJob?.cancel()
+        spAutoSyncJob = null
+        spAutoSyncRunning = false
+        spAutoSyncConsecutiveFailures = 0
+        lastSpAutoSyncTimeMs = null
+        lastSpAutoSyncError = null
+
+        val current = _walletState.value as? WalletState.Loaded ?: return
+        if (!enabled || current.isWatchOnly) return
+
+        spAutoSyncJob = viewModelScope.launch(Dispatchers.IO) {
+            var first = true
+            while (true) {
+                delay(if (first) SP_AUTO_SYNC_FIRST_DELAY_MS else nextSpAutoSyncDelayMs())
+                first = false
+
+                if (!canAutoSyncSilentPayments()) continue
+
+                spAutoSyncRunning = true
+                try {
+                    val result = syncSilentPayments(timeoutMs = SP_AUTO_SYNC_TIMEOUT_MS)
+                    lastSpAutoSyncTimeMs = System.currentTimeMillis()
+                    lastSpAutoSyncError = null
+                    spAutoSyncConsecutiveFailures = 0
+                    if (result.confirmedUtxos.isNotEmpty()) refreshNow()
+                } catch (e: TimeoutCancellationException) {
+                    lastSpAutoSyncError = "Sincronização automática demorou demais; o app tentará de novo."
+                    spAutoSyncConsecutiveFailures++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    lastSpAutoSyncError = humanizeError(e)
+                    spAutoSyncConsecutiveFailures++
+                } finally {
+                    spAutoSyncRunning = false
+                }
+            }
+        }
+    }
+
+    private suspend fun canAutoSyncSilentPayments(): Boolean {
+        val loaded = _walletState.value as? WalletState.Loaded ?: return false
+        if (loaded.isWatchOnly) return false
+        return try {
+            val wallet = withContext(Dispatchers.IO) { WalletStorage.load() }
+            if (wallet.spendType != SpendType.BIP86) return false
+            val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
+            BlindBitOraclePrefs.baseUrl(getApplication(), network) != null
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun loadPrice() {
         viewModelScope.launch {
             try {
@@ -754,25 +874,6 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             val wallet = withContext(Dispatchers.IO) { WalletStorage.load() }
             val xpub = wallet.xpub ?: return@withLock
             val network = if (wallet.network == Network.REGTEST) Network.TESTNET else wallet.network
-
-            // Retentativa de birthHeight (ver WalletData.birthHeightPending):
-            // só carteira Taproot (única que faz Silent Payments) que ainda
-            // não teve NENHUM sync manual de SP (spScanTipHeight==0) — depois
-            // do primeiro sync, capturar birthHeight tardio seria pior que
-            // deixar null (ver doc do campo). Gratuito: reusa a mesma sessão
-            // de rede deste scan normal, sem pedir nada ao usuário. Falha aqui
-            // não derruba o scan — só tenta de novo no próximo ciclo.
-            if (wallet.birthHeightPending && wallet.birthHeight == null &&
-                wallet.spendType == SpendType.BIP86 && wallet.spScanTipHeight == 0L
-            ) {
-                try {
-                    val tipHeight = withContext(Dispatchers.IO) { NodePrefs.dataSource(getApplication()).getTipHeight(network) }
-                    wallet.birthHeight = tipHeight
-                    wallet.birthHeightPending = false
-                } catch (_: Exception) {
-                    // Ainda sem rede pra isso — tenta de novo no próximo scan.
-                }
-            }
 
             // needsFullRescan (só true logo após migrar um wallet.json de
             // antes do scan incremental existir) força ignorar o estado
@@ -927,20 +1028,17 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                     // Altura de nascimento — ponto de partida do primeiro scan
                     // de Silent Payments (ver WalletData.birthHeight): uma
                     // carteira RECÉM-CRIADA não pode ter recebido nada antes
-                    // de existir. Best-effort AQUI (se a rede falhar, a
-                    // criação da carteira não pode travar por causa disso) —
-                    // mas não é best-effort ÚNICO: se falhar agora,
-                    // birthHeightPending fica marcado e WalletViewModel.doScan()
-                    // insiste de novo nos próximos scans até conseguir (ver
-                    // doc de WalletData.birthHeightPending), em vez de desistir
-                    // pra sempre no primeiro erro.
+                    // de existir. Best-effort — se a rede falhar aqui, a
+                    // criação não pode travar por causa disso; fica null e o
+                    // primeiro scan cai no lookback fixo (mais lento, mas
+                    // seguro: nunca grava uma altura tardia que esconderia
+                    // pagamentos SP recebidos logo após a criação).
                     withContext(Dispatchers.IO) {
                         try {
                             val tipHeight = NodePrefs.dataSource(context).getTipHeight(network)
                             wallet.birthHeight = tipHeight
-                            wallet.birthHeightPending = false
                         } catch (_: Exception) {
-                            wallet.birthHeightPending = true
+                            // Sem rede/timeout — fica null (ver comentário acima).
                         }
                         WalletStorage.save(wallet)
                     }
@@ -1201,7 +1299,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         timeoutMs: Long = 15 * 60_000L,
         rescanFromHeight: Long? = null
     ): SilentPaymentsSync.SyncResult = withTimeout(timeoutMs) {
-        walletSwitchMutex.withLock {
+        spSyncMutex.withLock {
+            walletSwitchMutex.withLock {
             val wallet = WalletStorage.load()
             require(!wallet.isWatchOnly) {
                 "Esta carteira é watch-only (sem seed neste aparelho) — scan de Silent Payments ainda exige a carteira com a seed."
@@ -1217,7 +1316,8 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             // não afeta saldo/scan normal do resto do app, nem a comunicação
             // com o oracle (que não passa por [ChainDataSource] nenhum). Ver
             // doc de [BlindBitOraclePrefs.isConfirmViaTorEnabled].
-            val primaryDataSource = if (BlindBitOraclePrefs.isConfirmViaTorEnabled(context)) {
+            val confirmViaTor = BlindBitOraclePrefs.isConfirmViaTorEnabled(context)
+            val primaryDataSource = if (confirmViaTor) {
                 TorBlockstreamDataSource(TorPrefs.proxy(context))
             } else {
                 NodePrefs.dataSource(context)
@@ -1225,10 +1325,14 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             // Fallback pra pool de Electrum públicos (ver FailoverChainDataSource):
             // Floresta não serve tx histórica arbitrária (Utreexo, sem
             // índice) e Blockstream/mempool.space aplicam rate limit por IP
-            // — os dois casos reais que travavam a confirmação de SP. Só
-            // MAINNET tem uma lista pública curada (PublicElectrumServers);
-            // TESTNET/REGTEST seguem só com a fonte primária.
-            val dataSource = if (network == Network.MAINNET) {
+            // — os dois casos reais que travavam a confirmação de SP. Regras:
+            // 1) ativo por padrão (BlindBitOraclePrefs.isElectrumFallbackEnabled),
+            // 2) só MAINNET (única com lista pública curada), 3) NUNCA junto de
+            // "Confirmar via Tor" — o fallback é clearnet e vazaria o IP real.
+            val useFailover = network == Network.MAINNET &&
+                !confirmViaTor &&
+                BlindBitOraclePrefs.isElectrumFallbackEnabled(context)
+            val dataSource = if (useFailover) {
                 FailoverChainDataSource(primaryDataSource)
             } else {
                 primaryDataSource
@@ -1253,15 +1357,23 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                     spendPubKey           = spendPub,
                     previousScanTipHeight = rescanFromHeight?.let { maxOf(0L, it - 1) } ?: wallet.spScanTipHeight,
                     birthHeight           = wallet.birthHeight,
-                    onBlockScanned        = onProgress
+                    onBlockScanned        = onProgress,
+                    onChunkCompleted      = { chunkUtxos, chunkTipHeight ->
+                        // Persiste o progresso a cada 100 blocos. Se o stream
+                        // morrer no chunk seguinte, não se perde o que já foi
+                        // confirmado e o próximo sync continua do chunk salvo.
+                        WalletStorage.addSilentPaymentUtxos(chunkUtxos, chunkTipHeight)
+                    }
                 )
                 if (result.confirmedUtxos.isNotEmpty() || result.newScanTipHeight != wallet.spScanTipHeight) {
                     WalletStorage.addSilentPaymentUtxos(result.confirmedUtxos, result.newScanTipHeight)
                 }
+                lastSpSyncUsedFallback = (dataSource as? FailoverChainDataSource)?.usedFallback ?: false
                 result
-            } finally {
-                scanPriv.fill(0)
-                (dataSource as? FailoverChainDataSource)?.close()
+                } finally {
+                    scanPriv.fill(0)
+                    (dataSource as? FailoverChainDataSource)?.close()
+                }
             }
         }
     }
@@ -1276,7 +1388,12 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         val oracleTlsEnabled: Boolean,
         val lastScanTipHeight: Long,
         val knownUtxoCount: Int,
-        val isWatchOnly: Boolean
+        val isWatchOnly: Boolean,
+        val lastSyncUsedFallback: Boolean,
+        val isAutoSyncEnabled: Boolean,
+        val isAutoSyncRunning: Boolean,
+        val lastAutoSyncTimeMs: Long?,
+        val lastAutoSyncError: String?
     )
 
     fun getSilentPaymentSyncStatus(): SilentPaymentSyncStatus? {
@@ -1291,7 +1408,12 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 oracleTlsEnabled  = BlindBitOraclePrefs.isTlsEnabled(context),
                 lastScanTipHeight = wallet.spScanTipHeight,
                 knownUtxoCount    = wallet.spUtxos.size,
-                isWatchOnly       = wallet.isWatchOnly
+                isWatchOnly       = wallet.isWatchOnly,
+                lastSyncUsedFallback = lastSpSyncUsedFallback,
+                isAutoSyncEnabled  = spAutoSyncJob?.isActive == true,
+                isAutoSyncRunning  = spAutoSyncRunning,
+                lastAutoSyncTimeMs = lastSpAutoSyncTimeMs,
+                lastAutoSyncError  = lastSpAutoSyncError
             )
         } catch (_: Exception) {
             null

@@ -2,6 +2,7 @@ package com.pokewallet.network
 
 import com.pokewallet.crypto.Network
 import com.pokewallet.crypto.SilentPaymentsScanner
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 
@@ -26,6 +27,18 @@ object SilentPaymentsSync {
      * altura mais antiga manualmente.
      */
     const val DEFAULT_LOOKBACK_BLOCKS = 100L
+
+    /** Nº máximo de blocos por stream gRPC. Longos streams de 300-500+
+     *  blocos são justamente onde a conexão HTTP/2 morre em rede móvel;
+     *  fatiar em janelas pequenas permite reconectar/persistir o progresso
+     *  entre as janelas em vez de recomeçar um stream gigante. */
+    const val SCAN_CHUNK_BLOCKS = 100L
+
+    /** Pausa entre janelas de [SCAN_CHUNK_BLOCKS]. Não é um sleep cego:
+     *  dá tempo pro oracle/proxy liberar a conexão anterior e mantém o
+     *  scan num ritmo previsível (~100 blocos por minuto) em rescans longos.
+     */
+    const val SCAN_CHUNK_PAUSE_MS = 60_000L
 
     fun defaultStartHeight(oracleTipHeight: Long): Long = maxOf(0L, oracleTipHeight - DEFAULT_LOOKBACK_BLOCKS)
 
@@ -84,16 +97,17 @@ object SilentPaymentsSync {
      * aceleração de hardware; sem isso a UI não tem como distinguir "lento
      * mas funcionando" de "travado").
      *
-     * O stream gRPC do oracle cobre a faixa INTEIRA numa única chamada
-     * HTTP/2 de longa duração — em rede móvel (troca WiFi/dados, NAT de
-     * operadora derrubando conexão ociosa) isso morre no meio com "RPC
-     * transport failure (HTTP status=200, grpc-status=null)" — erro real
-     * relatado em campo, 2026-09-21. Reconecta automaticamente a partir do
-     * PRÓXIMO bloco ainda não processado (nunca reprocessa nem pula um
-     * bloco: [nextStart] só avança depois de [onBlockScanned] confirmar
-     * que aquele bloco foi processado com sucesso) — até
-     * [MAX_STREAM_RETRIES] tentativas com backoff crescente antes de
-     * desistir e propagar o erro real.
+     * A faixa é fatiada em janelas de [SCAN_CHUNK_BLOCKS], com pausa entre
+     * elas. Cada stream gRPC cobre só uma janela — em rede móvel (troca
+     * WiFi/dados, NAT de operadora derrubando conexão ociosa) um stream de
+     * 300-500+ blocos morria no meio com "RPC transport failure
+     * (HTTP status=200, grpc-status=null)" — erro real relatado em campo,
+     * 2026-09-21. Dentro de cada janela, reconecta a partir do PRÓXIMO
+     * bloco ainda não processado (nunca reprocessa nem pula um bloco:
+     * [nextStart] só avança depois de [onBlockScanned] confirmar que aquele
+     * bloco foi processado com sucesso) — até [MAX_STREAM_RETRIES]
+     * tentativas com backoff crescente antes de desistir e propagar o erro
+     * real.
      */
     const val MAX_STREAM_RETRIES = 5
 
@@ -105,28 +119,88 @@ object SilentPaymentsSync {
         spendPubKey: ByteArray,
         startHeight: Long,
         endHeight: Long,
-        onBlockScanned: (height: Long, start: Long, end: Long) -> Unit = { _, _, _ -> }
+        onBlockScanned: (height: Long, start: Long, end: Long) -> Unit = { _, _, _ -> },
+        onChunkCompleted: (chunkUtxos: List<SilentPaymentsConfirmer.ConfirmedUtxo>, chunkTipHeight: Long) -> Unit = { _, _ -> }
+    ): List<SilentPaymentsConfirmer.ConfirmedUtxo> {
+        val confirmed = mutableListOf<SilentPaymentsConfirmer.ConfirmedUtxo>()
+        var nextStart = startHeight
+
+        while (nextStart <= endHeight) {
+            val chunkEnd = minOf(nextStart + SCAN_CHUNK_BLOCKS - 1, endHeight)
+            val chunkConfirmed = scanRangeChunk(
+                oracleBaseUrl  = oracleBaseUrl,
+                dataSource     = dataSource,
+                network        = network,
+                scanPrivateKey = scanPrivateKey,
+                spendPubKey    = spendPubKey,
+                startHeight    = nextStart,
+                endHeight      = chunkEnd,
+                fullRangeStart = startHeight,
+                fullRangeEnd   = endHeight,
+                onBlockScanned = onBlockScanned
+            )
+            confirmed += chunkConfirmed
+            onChunkCompleted(chunkConfirmed, chunkEnd)
+            nextStart = chunkEnd + 1
+
+            if (nextStart <= endHeight) {
+                delay(SCAN_CHUNK_PAUSE_MS)
+            }
+        }
+
+        return confirmed
+    }
+
+    private suspend fun scanRangeChunk(
+        oracleBaseUrl: String,
+        dataSource: ChainDataSource,
+        network: Network,
+        scanPrivateKey: ByteArray,
+        spendPubKey: ByteArray,
+        startHeight: Long,
+        endHeight: Long,
+        fullRangeStart: Long,
+        fullRangeEnd: Long,
+        onBlockScanned: (height: Long, start: Long, end: Long) -> Unit
     ): List<SilentPaymentsConfirmer.ConfirmedUtxo> {
         val confirmed = mutableListOf<SilentPaymentsConfirmer.ConfirmedUtxo>()
         var nextStart = startHeight
         var attempt = 0
+
         while (nextStart <= endHeight) {
+            var madeProgress = false
             try {
                 BlindBitOracleClient.streamBlockScanDataShort(oracleBaseUrl, nextStart, endHeight).collect { block ->
                     val candidates = SilentPaymentsScanner.scanBlock(block, scanPrivateKey, spendPubKey)
-                    candidates.forEach { c ->
-                        SilentPaymentsConfirmer.confirm(c, dataSource, network)?.let { confirmed += it }
+                    // Confirma o bloco INTEIRO num temporário antes de anexar:
+                    // se um confirm lançar no meio (ex.: getRawTx falhou),
+                    // o temporário é descartado e o retry reprocessa o bloco
+                    // sem duplicar os candidatos já confirmados antes.
+                    val blockConfirmed = candidates.mapNotNull { c ->
+                        SilentPaymentsConfirmer.confirm(c, dataSource, network)
                     }
-                    onBlockScanned(block.blockHeight, startHeight, endHeight)
+                    confirmed += blockConfirmed
+                    // A UI continua vendo o progresso da faixa COMPLETA, não
+                    // da janela de 100 blocos — senão a porcentagem pularia
+                    // de 100% pra 0% a cada novo chunk.
+                    onBlockScanned(block.blockHeight, fullRangeStart, fullRangeEnd)
                     nextStart = block.blockHeight + 1
+                    madeProgress = true
                     attempt = 0 // progresso real feito — reseta o contador de tentativas
                 }
+                // Stream terminou normalmente sem emitir NENHUM bloco — se
+                // nextStart não avançou, re-entrar no while seria um loop
+                // apertado contra o oracle. Encerra em vez de insistir.
+                if (!madeProgress) break
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 attempt++
                 if (attempt > MAX_STREAM_RETRIES) throw e
                 delay(1_000L * (1L shl (attempt - 1))) // 1s, 2s, 4s, 8s, 16s
             }
         }
+
         return confirmed
     }
 
@@ -149,7 +223,8 @@ object SilentPaymentsSync {
         spendPubKey: ByteArray,
         previousScanTipHeight: Long,
         birthHeight: Long? = null,
-        onBlockScanned: (height: Long, start: Long, end: Long) -> Unit = { _, _, _ -> }
+        onBlockScanned: (height: Long, start: Long, end: Long) -> Unit = { _, _, _ -> },
+        onChunkCompleted: (chunkUtxos: List<SilentPaymentsConfirmer.ConfirmedUtxo>, chunkTipHeight: Long) -> Unit = { _, _ -> }
     ): SyncResult {
         val info = BlindBitOracleClient.getInfo(oracleBaseUrl)
         require(matchesExpectedNetwork(network, info.network)) {
@@ -162,7 +237,17 @@ object SilentPaymentsSync {
         val start = resolveStartHeight(previousScanTipHeight, birthHeight, tip)
         if (start > tip) return SyncResult(emptyList(), previousScanTipHeight)
 
-        val confirmed = scanRange(oracleBaseUrl, dataSource, network, scanPrivateKey, spendPubKey, start, tip, onBlockScanned)
+        val confirmed = scanRange(
+            oracleBaseUrl     = oracleBaseUrl,
+            dataSource        = dataSource,
+            network           = network,
+            scanPrivateKey    = scanPrivateKey,
+            spendPubKey       = spendPubKey,
+            startHeight       = start,
+            endHeight         = tip,
+            onBlockScanned    = onBlockScanned,
+            onChunkCompleted  = onChunkCompleted
+        )
         return SyncResult(confirmed, tip)
     }
 }

@@ -81,6 +81,10 @@ object BlindBitOracleClient {
 
     private fun grpcClient(baseUrl: String): GrpcClient {
         val okHttp = OkHttpClient.Builder()
+            // Fallback de resolução via DNS-over-HTTPS quando o DNS do
+            // aparelho bloqueia/falha pra resolver o host do oracle (erro
+            // real em campo: "Unable to resolve host oracle.setor.dev").
+            .dns(DohFallbackDns())
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             // O gzip transparente do OkHttp (Accept-Encoding automático) não

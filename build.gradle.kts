@@ -38,8 +38,12 @@ android {
         // este projeto de fato testa. minifyEnabled (ver buildTypes.release
         // abaixo) NÃO afeta isso: R8/ProGuard só mexe em código Kotlin/Java,
         // nunca em biblioteca nativa.
+        // ABI(s) a empacotar. Padrão arm64-v8a (celular físico de teste);
+        // emuladores x86_64 deste PC pedem: ./gradlew assembleDebug -PpokewalletAbi=x86_64
+        val targetAbis = (project.findProperty("pokewalletAbi") as String? ?: "arm64-v8a")
+            .split(",").map { it.trim() }.filter { it.isNotEmpty() }
         ndk {
-            abiFilters += "arm64-v8a"
+            abiFilters += targetAbis
         }
     }
 

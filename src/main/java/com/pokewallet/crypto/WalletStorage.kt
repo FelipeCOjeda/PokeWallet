@@ -225,8 +225,8 @@ object WalletStorage {
             hasVerifiedFingerprint = json.optBoolean("hasVerifiedFingerprint", true),
             network            = Network.valueOf(json.getString("network")),
             spendType          = SpendType.valueOf(json.getString("spendType")),
-            xpub               = json.optString("xpub", null),
-            accountOrigin      = json.optString("accountOrigin", null),
+            xpub               = if (json.has("xpub") && !json.isNull("xpub")) json.getString("xpub") else null,
+            accountOrigin      = if (json.has("accountOrigin") && !json.isNull("accountOrigin")) json.getString("accountOrigin") else null,
             nextExternalIndex  = json.getInt("nextExternalIndex"),
             nextInternalIndex  = json.getInt("nextInternalIndex"),
             activeExternalIndices = intSet("activeExternalIndices"),
@@ -243,7 +243,6 @@ object WalletStorage {
             spUtxos            = spUtxos,
             spScanTipHeight    = json.optLong("spScanTipHeight", 0L),
             birthHeight        = if (json.has("birthHeight") && !json.isNull("birthHeight")) json.getLong("birthHeight") else null,
-            birthHeightPending = json.optBoolean("birthHeightPending", false),
             txLog              = txLog,
             raw                = json
         )
@@ -273,7 +272,6 @@ object WalletStorage {
         }))
         wallet.raw.put("spScanTipHeight", wallet.spScanTipHeight)
         wallet.raw.put("birthHeight", wallet.birthHeight ?: JSONObject.NULL)
-        wallet.raw.put("birthHeightPending", wallet.birthHeightPending)
         wallet.raw.put("txLog", org.json.JSONArray(wallet.txLog.map { e ->
             JSONObject()
                 .put("txid", e.txid)

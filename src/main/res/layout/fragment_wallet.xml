@@ -559,6 +559,15 @@
                         android:textColor="@color/gb_border_soft"
                         android:layout_marginBottom="10dp" />
 
+                    <CheckBox
+                        android:id="@+id/cb_sp_electrum_fallback"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="🌐 Fallback pra Electrum públicos (ativo por padrão, MAINNET)"
+                        android:textSize="11sp"
+                        android:textColor="@color/gb_border_soft"
+                        android:layout_marginBottom="10dp" />
+
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_sync_silent_payments"
                         style="@style/Gameboy.Button"

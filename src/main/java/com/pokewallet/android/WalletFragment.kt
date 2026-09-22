@@ -161,6 +161,7 @@ class WalletFragment : Fragment() {
         val etSpRescanHeight = view.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.et_sp_rescan_height)
         val btnSpRescanFromHeight = view.findViewById<MaterialButton>(R.id.btn_sp_rescan_from_height)
         val cbSpConfirmViaTor = view.findViewById<CheckBox>(R.id.cb_sp_confirm_via_tor)
+        val cbSpElectrumFallback = view.findViewById<CheckBox>(R.id.cb_sp_electrum_fallback)
         val tvLightningStatus = view.findViewById<TextView>(R.id.tv_lightning_status)
         val btnLightningConnect = view.findViewById<MaterialButton>(R.id.btn_lightning_connect)
         val rowLightningActions = view.findViewById<View>(R.id.row_lightning_actions)
@@ -260,6 +261,10 @@ class WalletFragment : Fragment() {
         cbSpConfirmViaTor.isChecked = BlindBitOraclePrefs.isConfirmViaTorEnabled(requireContext())
         cbSpConfirmViaTor.setOnCheckedChangeListener { _, checked ->
             BlindBitOraclePrefs.setConfirmViaTorEnabled(requireContext(), checked)
+        }
+        cbSpElectrumFallback.isChecked = BlindBitOraclePrefs.isElectrumFallbackEnabled(requireContext())
+        cbSpElectrumFallback.setOnCheckedChangeListener { _, checked ->
+            BlindBitOraclePrefs.setElectrumFallbackEnabled(requireContext(), checked)
         }
 
         btnLightningConnect.setOnClickListener { viewModel.connectLightning() }
@@ -1658,8 +1663,20 @@ class WalletFragment : Fragment() {
             status.oracleHost == null -> "⚠️ Nenhum oracle configurado pra esta rede — configure um manualmente."
             else -> {
                 val tipLabel = if (status.lastScanTipHeight > 0) status.lastScanTipHeight.toString() else "ainda não escaneado"
+                val fallbackNote = if (status.lastSyncUsedFallback) "\n⚠️ Último sync usou servidores públicos de fallback" else ""
+                val autoNote = when {
+                    !status.isAutoSyncEnabled -> "\n🔄 Sync automático: indisponível (somente Taproot com seed neste aparelho)."
+                    status.isAutoSyncRunning -> "\n🔄 Sync automático em andamento…"
+                    status.lastAutoSyncTimeMs != null -> {
+                        val time = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(status.lastAutoSyncTimeMs))
+                        "\n🔄 Sync automático em segundo plano · último às $time"
+                    }
+                    else -> "\n🔄 Sync automático em segundo plano · aguardando primeira execução"
+                }
+                val autoErrorNote = status.lastAutoSyncError?.let { "\n⚠️ $it" } ?: ""
                 "🔒 Oracle: ${status.oracleHost}${if (!status.oracleTlsEnabled) " (sem TLS)" else ""}\n" +
-                    "Escaneado até altura $tipLabel · ${status.knownUtxoCount} UTXO(s) Silent Payments"
+                    "Escaneado até altura $tipLabel · ${status.knownUtxoCount} UTXO(s) Silent Payments" +
+                    fallbackNote + autoNote + autoErrorNote
             }
         }
     }
@@ -1756,11 +1773,34 @@ class WalletFragment : Fragment() {
                 // longas (ex.: rede errada do oracle) e um Toast some rápido
                 // demais pra dar tempo de ler — achado real com o usuário
                 // ("não dá pra ler o resto").
-                showSpSyncErrorDialog(e.message ?: "Erro desconhecido ao sincronizar Silent Payments.")
+                showSpSyncErrorDialog(humanizeSpSyncError(e.message))
             } finally {
                 button.isEnabled = true
                 button.text = originalText
             }
+        }
+    }
+
+    /** Traduz mensagens técnicas do sync SP (gRPC/DNS/Blockstream) numa
+     *  orientação acionável — os erros crus ("Unable to resolve host",
+     *  "RPC transport failure") não dizem pro usuário o que fazer. Mantém o
+     *  detalhe técnico no fim pra quem quiser copiar/compartilhar. */
+    private fun humanizeSpSyncError(message: String?): String {
+        val msg = message ?: return "Erro desconhecido ao sincronizar Silent Payments."
+        val lower = msg.lowercase()
+        return when {
+            lower.contains("unable to resolve host") ||
+                lower.contains("no address associated with hostname") ||
+                lower.contains("failed to connect") ->
+                "Sem conexão com a internet ou DNS indisponível. Verifique Wi-Fi/dados " +
+                    "(e o Orbot, se estiver usando Tor) e tente de novo.\n\nDetalhe técnico: $msg"
+            lower.contains("rpc transport failure") || lower.contains("grpc") ->
+                "A conexão com o oracle caiu durante o scan. O app tenta reconectar sozinho; " +
+                    "se este erro aparecer, tente sincronizar de novo.\n\nDetalhe técnico: $msg"
+            lower.contains("todos os provedores falharam") ->
+                "Nenhum provedor de dados respondeu (Blockstream/mempool). Verifique sua " +
+                    "internet, ou configure um node próprio / fallback de Electrum públicos.\n\nDetalhe técnico: $msg"
+            else -> msg
         }
     }
 
