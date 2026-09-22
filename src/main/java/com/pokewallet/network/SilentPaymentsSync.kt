@@ -2,6 +2,7 @@ package com.pokewallet.network
 
 import com.pokewallet.crypto.Network
 import com.pokewallet.crypto.SilentPaymentsScanner
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 
 /**
@@ -82,7 +83,20 @@ object SilentPaymentsSync {
      * ponto de curva elíptica, pode levar minutos num celular sem
      * aceleração de hardware; sem isso a UI não tem como distinguir "lento
      * mas funcionando" de "travado").
+     *
+     * O stream gRPC do oracle cobre a faixa INTEIRA numa única chamada
+     * HTTP/2 de longa duração — em rede móvel (troca WiFi/dados, NAT de
+     * operadora derrubando conexão ociosa) isso morre no meio com "RPC
+     * transport failure (HTTP status=200, grpc-status=null)" — erro real
+     * relatado em campo, 2026-09-21. Reconecta automaticamente a partir do
+     * PRÓXIMO bloco ainda não processado (nunca reprocessa nem pula um
+     * bloco: [nextStart] só avança depois de [onBlockScanned] confirmar
+     * que aquele bloco foi processado com sucesso) — até
+     * [MAX_STREAM_RETRIES] tentativas com backoff crescente antes de
+     * desistir e propagar o erro real.
      */
+    const val MAX_STREAM_RETRIES = 5
+
     suspend fun scanRange(
         oracleBaseUrl: String,
         dataSource: ChainDataSource,
@@ -94,12 +108,24 @@ object SilentPaymentsSync {
         onBlockScanned: (height: Long, start: Long, end: Long) -> Unit = { _, _, _ -> }
     ): List<SilentPaymentsConfirmer.ConfirmedUtxo> {
         val confirmed = mutableListOf<SilentPaymentsConfirmer.ConfirmedUtxo>()
-        BlindBitOracleClient.streamBlockScanDataShort(oracleBaseUrl, startHeight, endHeight).collect { block ->
-            val candidates = SilentPaymentsScanner.scanBlock(block, scanPrivateKey, spendPubKey)
-            candidates.forEach { c ->
-                SilentPaymentsConfirmer.confirm(c, dataSource, network)?.let { confirmed += it }
+        var nextStart = startHeight
+        var attempt = 0
+        while (nextStart <= endHeight) {
+            try {
+                BlindBitOracleClient.streamBlockScanDataShort(oracleBaseUrl, nextStart, endHeight).collect { block ->
+                    val candidates = SilentPaymentsScanner.scanBlock(block, scanPrivateKey, spendPubKey)
+                    candidates.forEach { c ->
+                        SilentPaymentsConfirmer.confirm(c, dataSource, network)?.let { confirmed += it }
+                    }
+                    onBlockScanned(block.blockHeight, startHeight, endHeight)
+                    nextStart = block.blockHeight + 1
+                    attempt = 0 // progresso real feito — reseta o contador de tentativas
+                }
+            } catch (e: Exception) {
+                attempt++
+                if (attempt > MAX_STREAM_RETRIES) throw e
+                delay(1_000L * (1L shl (attempt - 1))) // 1s, 2s, 4s, 8s, 16s
             }
-            onBlockScanned(block.blockHeight, startHeight, endHeight)
         }
         return confirmed
     }
