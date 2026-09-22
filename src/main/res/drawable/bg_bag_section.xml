@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Subdivisão da Mochila: caixa simples, sem os cantos decorados da
+     caixa externa, só pra separar visualmente cada grupo de opções. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/gb_screen_alt" />
+    <stroke android:width="1.5dp" android:color="@color/gb_border_soft" />
+</shape>

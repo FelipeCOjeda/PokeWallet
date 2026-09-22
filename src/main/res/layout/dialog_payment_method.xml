@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_overworld_repeat"
+    android:padding="24dp"
+    android:gravity="center_horizontal">
+
+    <TextView
+        android:id="@+id/tv_payment_method_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Escolha a rede"
+        android:textSize="12sp"
+        style="@style/Gameboy.Title"
+        android:gravity="center"
+        android:layout_marginBottom="20dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_method_onchain"
+        style="@style/Gameboy.Button"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:text="₿ On-chain"
+        android:textSize="12sp"
+        app:backgroundTint="@color/bitcoin_orange" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_method_lightning"
+        style="@style/Gameboy.Button"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:text="⚡ Lightning"
+        android:textSize="12sp"
+        android:layout_marginTop="12dp"
+        app:backgroundTint="@color/accent_yellow" />
+
+</LinearLayout>

@@ -628,26 +628,27 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
      * além dele fica invisível pro saldo até um rescan completo manual.
      * Índice 0 é sempre coberto por qualquer gap limit razoável.
      */
-    fun getFixedPegOnchainAddress(): String? {
-        if (!walletSwitchMutex.tryLock()) return null
-        return try {
-            val wallet = WalletStorage.load()
-            if (wallet.isWatchOnly) return null
-            val seed = SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
+    suspend fun getFixedPegOnchainAddress(): String? = walletSwitchMutex.withLock {
+        try {
+            val wallet = withContext(Dispatchers.IO) { WalletStorage.load() }
+            if (wallet.isWatchOnly) return@withLock null
+            val seed = withContext(Dispatchers.IO) {
+                SeedDerivation.fromMnemonic(wallet.mnemonic!!, wallet.passphrase!!)
+            }
             try {
-                ReceiveAddressService.addressAt(
-                    seed      = seed,
-                    spendType = wallet.spendType,
-                    network   = wallet.network,
-                    index     = 0
-                )
+                withContext(Dispatchers.IO) {
+                    ReceiveAddressService.addressAt(
+                        seed      = seed,
+                        spendType = wallet.spendType,
+                        network   = wallet.network,
+                        index     = 0
+                    )
+                }
             } finally {
                 seed.fill(0)
             }
         } catch (_: Exception) {
             null
-        } finally {
-            walletSwitchMutex.unlock()
         }
     }
 

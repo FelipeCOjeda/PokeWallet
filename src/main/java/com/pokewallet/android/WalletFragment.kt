@@ -188,12 +188,11 @@ class WalletFragment : Fragment() {
                     true
                 }
                 R.id.nav_receive -> {
-                    val pair = viewModel.getReceiveAddress()
-                    if (pair != null) showReceiveDialog(pair.first, pair.second)
+                    showReceiveMethodDialog()
                     false
                 }
                 R.id.nav_send -> {
-                    openSend()
+                    showSendMethodDialog()
                     false
                 }
                 R.id.nav_bag -> {
@@ -207,12 +206,9 @@ class WalletFragment : Fragment() {
             }
         }
 
-        btnReceive.setOnClickListener {
-            val pair = viewModel.getReceiveAddress()
-            if (pair != null) showReceiveDialog(pair.first, pair.second)
-        }
+        btnReceive.setOnClickListener { showReceiveMethodDialog() }
 
-        btnSend.setOnClickListener { openSend() }
+        btnSend.setOnClickListener { showSendMethodDialog() }
         btnForget.setOnClickListener { confirmForget() }
 
         btnRenameWallet.setOnClickListener {
@@ -375,6 +371,83 @@ class WalletFragment : Fragment() {
                     "⏳ Transação pendente chegando!\n+%,d sat a caminho".format(sats),
                     Toast.LENGTH_LONG
                 ).show()
+            }
+        }
+    }
+
+    private fun showReceiveMethodDialog() {
+        openPaymentMethodDialog(
+            title = "Receber",
+            onOnchain = {
+                val pair = viewModel.getReceiveAddress()
+                if (pair != null) showReceiveDialog(pair.first, pair.second)
+            },
+            onLightning = { withLightningReady { showLightningReceiveDialog() } }
+        )
+    }
+
+    private fun showSendMethodDialog() {
+        openPaymentMethodDialog(
+            title = "Enviar",
+            onOnchain = { openSend() },
+            onLightning = { withLightningReady { showLightningSendDialog() } }
+        )
+    }
+
+    /** Diálogo de escolha entre rede on-chain e Lightning pros botões
+     *  principais de Receber/Enviar. */
+    private fun openPaymentMethodDialog(
+        title: String,
+        onOnchain: () -> Unit,
+        onLightning: () -> Unit
+    ) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_payment_method, null)
+        val tvTitle  = dialogView.findViewById<TextView>(R.id.tv_payment_method_title)
+        val btnOnchain = dialogView.findViewById<MaterialButton>(R.id.btn_method_onchain)
+        val btnLightning = dialogView.findViewById<MaterialButton>(R.id.btn_method_lightning)
+
+        tvTitle.text = when (title) {
+            "Receber" -> "Receber via"
+            else -> "Enviar via"
+        }
+
+        val dialog = AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
+            .setView(dialogView)
+            .create()
+
+        btnOnchain.setOnClickListener {
+            dialog.dismiss()
+            onOnchain()
+        }
+        btnLightning.setOnClickListener {
+            dialog.dismiss()
+            onLightning()
+        }
+
+        dialog.show()
+    }
+
+    /** Garante que a Breez SDK - Spark está conectada antes de abrir um
+     *  diálogo Lightning. Se estiver desligada, conecta e espera o estado
+     *  terminal (Connected/Error/Unavailable) antes de abrir o fluxo. */
+    private fun withLightningReady(action: () -> Unit) {
+        when (val state = viewModel.lightningState.value) {
+            is LightningState.Connected -> action()
+            is LightningState.Connecting -> Toast.makeText(requireContext(), "Lightning já está conectando…", Toast.LENGTH_SHORT).show()
+            else -> {
+                viewModel.connectLightning()
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val terminal = viewModel.lightningState.first {
+                        it is LightningState.Connected ||
+                            it is LightningState.Error ||
+                            it is LightningState.Unavailable
+                    }
+                    when (terminal) {
+                        is LightningState.Connected -> action()
+                        is LightningState.Error -> showSelectableTextDialog("⚠️ Erro ao ativar Lightning", terminal.message)
+                        else -> showSelectableTextDialog("⚠️ Lightning indisponível", "Esta carteira/rede não suporta Lightning neste aparelho.")
+                    }
+                }
             }
         }
     }
