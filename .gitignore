@@ -28,7 +28,6 @@ receive_index.txt
 
 # Dev artifacts
 change_index.txt
-SESSAO_ATUAL.txt
 *.bkp.txt
 *.bkp2.txt
 *.zip

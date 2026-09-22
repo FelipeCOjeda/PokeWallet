@@ -1,0 +1,320 @@
+================================================================================
+PKMBTCWALLET - SESSÃO DE TRABALHO
+Atualizado: 2026-09-22 — EM ANDAMENTO: Silent Payments em background +
+scan fatiado, Mochila reorganizada, receber/enviar com opção Lightning,
+fix do saque LN para on-chain.
+================================================================================
+
+## Mochila, botões LN e saque LN (2026-09-22)
+- Mochila reorganizada com subdivisões visuais (`bg_bag_section.xml`),
+  agrupando Carteira, Carteiras, Endereços, Ferramentas, Backup,
+  Aparência, Conexões, Tor, Silent Payments, Lightning, Histórico e Zona
+  de perigo.
+- Receber/Enviar da tela principal agora abrem `dialog_payment_method.xml`
+  para escolher On-chain ou Lightning. Se Lightning estiver desconectado,
+  o app conecta e aguarda antes de abrir o fluxo LN.
+- `getFixedPegOnchainAddress()` virou suspend e usa `walletSwitchMutex.withLock`
+  em vez de `tryLock`, corrigindo "Não foi possível obter o endereço
+  on-chain desta carteira" quando um scan/sync de fundo segurava o mutex.
+
+Commit: `0559a11` — "Reorganiza Mochila e adiciona opções LN em
+receber/enviar". Push em `origin/master` e `public/main`.
+APK: `Downloads/pkmbtcwallet-debug-20260922-191044.apk`.
+
+## Sync Silent Payments automático + chunking 100 blocos/min (2026-09-22)
+Problema real relatado: sync SP de 300-500 blocos morria no meio como se
+estivesse offline (stream gRPC único muito longo em rede móvel).
+
+Implementado e commitado:
+- `SilentPaymentsSync`: faixa fatiada em janelas de `SCAN_CHUNK_BLOCKS`
+  (100), com pausa de `SCAN_CHUNK_PAUSE_MS` (60s) entre janelas.
+- Persistência incremental por janela: `onChunkCompleted` chama
+  `WalletStorage.addSilentPaymentUtxos(chunkUtxos, chunkTipHeight)`. Se o
+  stream morrer no chunk 4, os chunks 1-3 já estão salvos.
+- `WalletViewModel`: `startAutoSilentPaymentsSync()` roda sync SP em
+  segundo plano para carteiras Taproot/BIP86 com seed. Intervalo base 4min,
+  backoff até 30min, timeout 10min. Mutex próprio (`spSyncMutex`) serializa
+  sync automático e manual.
+- Auto-sync agora roda em `Dispatchers.IO`, não na main thread.
+- `WalletFragment`: status da Mochila mostra sync automático
+  (em andamento/último horário/erro).
+- Outros ajustes já pendentes desta linha de trabalho: DohFallbackDns,
+  failover Electrum opcional, reconexão do stream gRPC, birthHeight
+  best-effort sem pendência tardia.
+- Fix do erro "Unable to resolve host oracle.setor.dev" depois de ~300
+  blocos: `DohFallbackDns` agora é compartilhado por toda a vida do
+  processo (o cache não é mais recriado a cada chunk) e tem fallback para
+  Google + Cloudflare DNS-over-HTTPS.
+
+Validação: `compileDebugKotlin` e `assembleDebug` OK. APK:
+`Downloads/pkmbtcwallet-debug-20260922-180038.apk`.
+
+## Feature Lightning via Spark — EM ANDAMENTO (retomada de sessão travada)
+Objetivo: enviar/receber Lightning na pkmwallet via Breez SDK - Spark,
+isolado do saldo/fluxo on-chain (mesmo espírito de isolamento dos Silent
+Payments — saldo Lightning nunca soma automático ao saldo principal).
+
+Feito nesta sessão (compilado + `assembleDebug` OK, NÃO commitado):
+- `build.gradle.kts`: dependência `breez_sdk_spark:bindings-android:0.24.1`,
+  `BREEZ_API_KEY` lida de `local.properties` (gitignored) via
+  `buildConfigField`. `defaultConfig.ndk.abiFilters = ["arm64-v8a"]` —
+  achado real (Felipe percebeu o APK saltar de 14MB pra 274MB):
+  `libbreez_sdk_spark_bindings.so` sozinha é ~55-65MB POR arquitetura, e
+  sem abiFilters o Gradle empacota as 4 (arm64-v8a/armeabi-v7a/x86/x86_64)
+  em todo APK — inclusive RELEASE (minifyEnabled/R8 não mexe em lib
+  nativa). Restrito a arm64-v8a (todo device físico de teste real é
+  isso) derrubou o debug APK pra ~84MB.
+- `settings.gradle.kts`: repo maven `https://mvn.breez.technology/releases`.
+- `local.properties`: `BREEZ_API_KEY` já configurada (chave escopada ao
+  projeto "Pkmwallet", não pessoal).
+- `src/main/java/com/pokewallet/lightning/` (pacote novo):
+  - `LightningStorage.kt` — dir de dados do SDK isolado por carteira em
+    `wallets/<fingerprint>/lightning/` (mesmo padrão do WalletRegistry).
+  - `LightningNetworkSupport.kt` — mapeia `Network` do app pra `Network`
+    da Spark; só MAINNET/REGTEST são suportados pela Spark (sem
+    testnet/signet ainda), TESTNET da carteira fica sem a feature.
+  - `LightningWallet.kt` — wrapper fino: `connect()` (mesmo seed BIP39
+    mnemônico+passphrase da carteira on-chain, Spark deriva chaves
+    próprias), `disconnect()`, `balanceSats()`, `receiveBolt11()`,
+    `receiveSparkAddress()`, `parseInput()`, `prepareSend()`+`confirmSend()`
+    (dois passos, mesmo espírito do fluxo on-chain: mostra taxa antes de
+    confirmar), `events(): Flow<SdkEvent>` via callbackFlow.
+- API real da SDK conferida por engenharia reversa do `.aar` (javap no
+  classes.jar do cache do Gradle) — não tinha doc/exemplo Kotlin confiável
+  à mão, então NENHUM nome de classe/método foi chutado. Achado real nessa
+  conferência: getters mangled tipo `getLightningFeeSats-s-VKNKU()` NÃO
+  indicam nullability (como assumi errado de início) — indicam que o tipo
+  Kotlin de verdade é unsigned (`ULong`), mesmo quando javap mostra `long`
+  primitivo no parâmetro do construtor. Só o próprio compilador Kotlin
+  revelou isso de verdade (erro de tipo `UInt`/`ULong` esperado onde eu
+  tinha assumido `Long`); reverse engineering via javap tem esse limite.
+
+UI adicionada nesta sessão (Mochila, logo abaixo de "🔒 SILENT PAYMENTS",
+conforme pedido do Felipe — "dentro da Mochila junto dos Silent
+Payments"):
+- `fragment_wallet.xml`: seção "⚡ LIGHTNING" — status, botão "Ativar
+  Lightning", e (só depois de conectado) botões "📥 Receber"/"📤 Enviar".
+- `dialog_lightning_receive.xml` + `dialog_lightning_send.xml`: novos.
+- `WalletViewModel.kt`: `LightningState` (Unavailable/Disconnected/
+  Connecting/Connected/Error) como StateFlow, `connectLightning()`,
+  `disconnectLightningIfConnected()` (hookado em `resetPerWalletCaches()`
+  — desconecta sozinho ao trocar/esquecer carteira, evita enviar Lightning
+  pela carteira errada), `lightningReceiveBolt11/SparkAddress/PrepareSend/
+  ConfirmSend`. Reconecta ao evento do SDK pra atualizar saldo ao vivo.
+- `WalletFragment.kt`: `updateLightningUi()`, `showLightningReceiveDialog()`
+  (invoice BOLT11 com valor/descrição opcionais OU endereço Spark),
+  `showLightningSendDialog()` (colar/escanear destino → "Verificar"
+  mostra valor+taxa via `previewOf()` → "Confirmar" só então move fundos).
+- `LightningWallet.kt` ganhou `SendPreview`/`previewOf()` — traduz o `when`
+  sobre as variantes de `SendPaymentMethod` (cada uma carrega a taxa num
+  campo/formato diferente) num resumo simples pra UI.
+
+## TESTADO NO CELULAR pelo Felipe (2026-09-08) — primeiro teste real
+Ativar Lightning, RECEBER via invoice BOLT11 e ENVIAR via invoice BOLT11
+CONFIRMADOS funcionando com a Breez SDK de verdade (não só compilação).
+Validou toda a leitura de API feita por engenharia reversa do `.aar`.
+
+Dois problemas achados no teste real, os DOIS já corrigidos nesta sessão
+(recompilado + `assembleDebug` OK, ainda NÃO testado de novo no aparelho):
+
+1. **Enviar pra LN address dava "unsupported payment method"** — a SDK
+   trata LN address (e LNURL-pay em geral) por um protocolo HTTP SEPARADO
+   (`prepareLnurlPay`/`lnurlPay`), não pelo caminho normal
+   (`prepareSendPayment`/`sendPayment` com `PaymentRequest.Input`) que eu
+   tinha usado pra TODO destino sem diferenciar. Corrigido em
+   `LightningWallet.prepareSend()`: agora faz `sdk.parse()` primeiro, e se
+   o resultado for `InputType.LightningAddress` ou `InputType.LnurlPay`,
+   desvia pro caminho `prepareLnurlPay`/`lnurlPay`. Introduzido
+   `PreparedLightningPayment` (sealed: `Standard`/`Lnurl`) pra unificar os
+   dois caminhos sem vazar os dois tipos de resposta da SDK pro
+   ViewModel/Fragment — `previewOf()` e `confirmSend()` atualizados junto.
+   `WalletViewModel.lightningPrepareSend/ConfirmSend` e
+   `WalletFragment.showLightningSendDialog` ajustados pro novo tipo.
+
+2. **"Não entendi como misturo o saldo com o saldo onchain"** — Felipe
+   queria só EXIBIÇÃO somada (confirmei antes de mexer: NÃO é sobre
+   depositar/sacar entre on-chain e Spark, só sobre a tela mostrar um
+   total). A tela HOME agora mostra on-chain + Lightning somados no "SALDO"
+   principal, com uma linha nova abaixo detalhando quanto disso é Lightning
+   (`tv_balance_lightning_breakdown`, só aparece com saldo LN > 0) — os
+   saldos continuam TECNICAMENTE separados por baixo (Spark é uma L2 à
+   parte), isso é só exibição. `updateTotalBalanceDisplay()` novo em
+   `WalletFragment.kt`, chamado tanto pelo collector de `walletState`
+   quanto pelo de `lightningState` (qualquer um dos dois pode mudar o
+   total).
+
+## Saque Lightning → on-chain (2026-09-08, mesma sessão)
+Felipe testou LN address + saldo total, funcionaram — mas perguntou "como
+envio meus sats da LN pra onchain", não achou o caminho. Resposta: JÁ
+EXISTIA na SDK sem eu ter percebido — `SendPaymentMethod.BitcoinAddress`
+é só mais uma variante de destino aceita pelo MESMO `prepareSendPayment`
+usado pra invoice/Spark address (a SDK reconhece um endereço Bitcoin
+normal sozinha via `sdk.parse()`). O que faltava era só:
+1. Passar `SendPaymentOptions.BitcoinAddress(OnchainConfirmationSpeed)` na
+   hora de `confirmSend()` — só esse destino específico precisa disso (a
+   velocidade de confirmação do saque, tem FAST/MEDIUM/SLOW). Hardcoded
+   MEDIUM por enquanto, SEM seletor de velocidade na UI — pendência abaixo.
+2. `previewOf()` calculava taxa 0 pra esse destino (caía no `else -> 0L`
+   do `when` sobre `SendPaymentMethod`) — corrigido, soma
+   `feeQuote.speedMedium.userFeeSat + .l1BroadcastFeeSat`.
+3. UI: o campo "Enviar Lightning" não deixava óbvio que aceitava endereço
+   Bitcoin normal — hint não tinha espaço, adicionei uma linha de texto
+   explicando isso logo abaixo do campo (`dialog_lightning_send.xml`).
+Ou seja: pra sacar, o Felipe só precisa colar o PRÓPRIO endereço on-chain
+desta carteira (o mesmo do botão "Receber" normal, fora da Mochila) no
+campo "Enviar" da seção Lightning — mesmo fluxo de "Verificar" → "Confirmar"
+de qualquer outro envio Lightning, sem tela nova nenhuma.
+
+## Peg-in/peg-out num toque (2026-09-08, mesma sessão — SUBSTITUIU o
+## diálogo dedicado anterior, ver git diff se quiser a versão descartada)
+Primeira versão (diálogo "🔁 On-chain ⇄ Lightning" com endereço/QR visível
+e campo de valor) foi REJEITADA pelo Felipe: "não gostei... o botão não
+precisa mostrar o endereço onchain. Basta que o usuário aperte". Reescrito
+do zero como dois botões de UM toque, sem endereço nem valor visíveis:
+
+Mochila → seção Lightning → "⬇ Depositar tudo" / "⬆ Sacar tudo" (lado a
+lado, abaixo de Receber/Enviar, só visíveis conectado):
+- **Depositar tudo (peg-in)**: busca o endereço de depósito Spark FIXO
+  internamente (`ReceivePaymentMethod.BitcoinAddress(newAddress = false)`
+  — sempre o mesmo, nunca um novo) e chama
+  `WalletViewModel.sendFunds(address, sweep=true, mode=Tor, ...)` DIRETO
+  — a MESMA função que o diálogo de envio on-chain normal usa por baixo,
+  só que sem abrir aquele diálogo (não faz sentido mostrar campo de
+  endereço/valor/UTXO aqui). Popup de confirmação com o valor e aviso de
+  taxa ANTES de chamar sendFunds; popup de progresso depois. Modo Tor +
+  taxa "mais rápida" da mempool como padrão (mesmos padrões do diálogo
+  normal). NÃO reusa a UI do diálogo de envio, só a função de baixo nível
+  — decisão deliberada: não queria criar uma segunda cópia da lógica de
+  broadcast on-chain, só pular a etapa de "preencher formulário".
+- **Sacar tudo (peg-out)**: usa `WalletViewModel.getFixedPegOnchainAddress()`
+  (índice 0 fixo, nunca avança) + `WalletViewModel.lightningPrepareSweepToOnchain()`
+  (novo em `LightningWallet.kt`) — como a taxa NÃO é subtraída sozinha do
+  valor pedido pela SDK, esse método faz uma pré-cotação com o saldo cheio
+  só pra descobrir a taxa, e prepara de verdade com saldo-taxa (deixa 0
+  sat pra trás). Popup de confirmação mostra valor líquido + taxa antes de
+  confirmar.
+- Mínimo de 4.000 sats (`LightningWallet.MIN_PEG_AMOUNT_SATS`) VALIDADO
+  nos dois sentidos agora — checa o saldo relevante (on-chain ou Lightning,
+  synced/StateFlow já em memória) ANTES de disparar qualquer chamada de
+  rede, nos dois botões.
+- Achado real ao escrever isso: o primeiro rascunho usava `collectLatest`
+  num `StateFlow` COMPARTILHADO (`sendState`) sem nunca cancelar — ficaria
+  "vivo" pra sempre e reagiria de novo a um envio FUTURO feito pelo
+  diálogo de envio normal (Toast/popup da vez errada). Trocado por
+  `.first { estado terminal }`, que completa e cancela sozinho.
+
+## Erro real no primeiro teste do peg-in (2026-09-08, mesma sessão)
+"Depositar tudo" deu erro no aparelho: "Service error: service connection
+error: Connection error: status: Unavailable - message: dns erro ... "
+(formato gRPC/tonic — "MetadataMap" é termo do cliente gRPC em Rust).
+Felipe diagnosticou: "este serviço não deve usar tor, deve usar a
+internet convencional". Corrigido: `showPegInConfirm()` chamava
+`viewModel.sendFunds(..., mode = SendMode.Tor, ...)` copiando o padrão do
+diálogo de envio normal (que É Tor por padrão) — trocado pra
+`SendMode.Internet`.
+
+RESSALVA HONESTA (não testada ainda): a mensagem de erro tem cara de
+gRPC — isso é o cliente interno da PRÓPRIA Breez SDK (usado por
+`lightningReceiveOnchainDepositAddress()` pra buscar o endereço de
+depósito), que este código NUNCA roteou por Tor, código nenhum meu tocava
+Tor antes do `sendFunds` (que só entra DEPOIS de já ter o endereço). Ou
+seja: pode ser que o fix acima (Internet em vez de Tor no broadcast)
+resolva mesmo assim porque o Orbot pode estar em modo VPN no aparelho
+(proxya TUDO do sistema, não só o SOCKS5 que o app usa explicitamente) —
+nesse caso desligar/pausar o Orbot no aparelho durante o teste também
+seria necessário, independente do código. Se o erro persistir mesmo com
+Orbot desligado, o problema está em outro lugar (talvez a chamada
+`receivePayment(BitcoinAddress(newAddress=false))` em si, não o broadcast).
+
+Pendências / NÃO testado (importante):
+- Peg-in/peg-out num toque (acima) ainda NÃO testado no aparelho — só
+  compilado + empacotado.
+- Saque pro on-chain (avulso, com endereço colado à mão) ainda NÃO foi
+  testado no aparelho — só
+  compilado. Velocidade de confirmação fixa em MEDIUM, sem seletor —
+  se o Felipe quiser escolher (ex.: SLOW pra pagar menos taxa numa
+  retirada sem pressa), precisa de UI nova (mesmo padrão de fee-speed que
+  o envio on-chain normal já tem, ver FeeTimeEstimator).
+- O FIX do LN address (item 1 acima) ainda não foi testado no aparelho —
+  só compilado. Próximo teste real deveria confirmar isso especificamente.
+- Sem persistência de "Lightning ligado" entre aberturas do app — por
+  design (feature opt-in, nunca conecta sozinha), mas vale confirmar que é
+  o comportamento desejado (toda abertura do app exige tocar "Ativar" de
+  novo, mesmo numa carteira que já usou Lightning antes).
+- Receber via LN address (registrar um "nome@domínio" próprio) ainda não
+  foi incluído — só BOLT11 + endereço Spark no botão Receber.
+  `registerLightningAddress` existe na SDK, não foi usado. ENVIAR pra LN
+  address de outra pessoa já funciona (item 1 acima) — são coisas
+  diferentes (receber via LN address exige registrar um nome único no
+  domínio da Breez, um fluxo de UI à parte).
+- Preview de taxa no envio (`previewOf`) cobre Bolt11Invoice e SparkAddress
+  como destino no caminho `Standard`; não cobre `CrossChainAddress` (cai no
+  `else -> 0L`, taxa mostrada como zero mesmo que a SDK cobre algo — só
+  reflete no saldo pós-envio, não no preview). LN address/LNURL-pay (o que
+  motivou o item 1) agora tem preview correto via `PreparedLightningPayment.Lnurl`.
+
+Histórico detalhado desta feature (todos os achados, decisões, testes) fica
+em `/home/felipe/claudebkp/projetos/sessoes/SESSAO_PKMBTCWALLET_SILENT_PAYMENTS.txt`
+— este arquivo (SESSAO_ATUAL.txt) é só o resumo do ESTADO ATUAL pra retomar
+rápido, sem precisar reler tudo. Sessões anteriores (auditoria, refactors,
+node Electrum, etc.) ficam só no `git log` — não repetidas aqui.
+
+## Estado do git
+- HEAD = `b76d99b`, working tree limpo (sem mudanças pendentes).
+- origin (privado) e public (PokéWallet, branch main) IGUAIS até `b76d99b`.
+- Release pública v1.4.0 criada em 2026-09-03, APK anexado (mesmo build
+  confirmado funcionando pelo Felipe).
+
+## O que é este projeto
+App Android de carteira Bitcoin em Kotlin, tema Pokémon (passphrase BIP39
+usa nomes de Pokémon). BIP84 (Native SegWit) ou BIP86 (Taproot) por
+carteira. Rede padrão MAINNET. Múltiplas carteiras, watch-only por xpub,
+assinatura air-gapped via QR (PSBT real), controle de UTXO, node Electrum
+próprio opcional (Floresta, ver projeto irmão), broadcast via Tor, e agora
+Silent Payments completo.
+
+## Feature Silent Payments (BIP-352) — RESUMO
+Implementada do zero nesta sessão longa (várias madrugadas):
+- Enviar pra endereço SP (Fase 1).
+- Gerar/exibir próprio endereço SP (Fase 2).
+- Escanear recebimento contra um oracle blindbit-oracle público (gRPC via
+  Wire/Square) — `BlindBitOracleClient`, `SilentPaymentsScanner`,
+  `SilentPaymentsConfirmer`, `SilentPaymentsSync` (network/); UI na
+  Mochila (host do oracle por rede, status, botão "Sincronizar agora",
+  checkbox opcional "Confirmar via Tor").
+- Gastar UTXOs SP recebidos (só carteira BIP86/Taproot — BIP84 não gasta
+  SP ainda, limitação documentada, exigiria assinador com witness
+  heterogêneo por input).
+
+Validado com PAGAMENTO REAL em MAINNET (o Felipe mandou fundos de verdade
+antes do código estar validado ponta-a-ponta — 6 bugs reais encontrados e
+corrigidos até fechar o ciclo, todos no git log entre `4bab012` e
+`b76d99b`, resumo rápido):
+1. Host do oracle vazando entre redes (chave de preferência compartilhada).
+2. Trava de rede só aceitava "mainnet"/"bitcoin", oracle real diz "main".
+3. Loop sem limite no scanner travava o app de vez (CPU puro, timeout de
+   coroutine não interrompe loop sem ponto de suspensão).
+4. MAIS IMPORTANTE: doc do blindbit-oracle mente sobre endianness — afirma
+   little-endian, servidor real manda big-endian (formato de exibição).
+   Confirmação de UTXO buscava txid que nunca existiu.
+5-6. Saldo da tela principal e checagem "Saldo zero" no envio ignoravam
+   UTXO SP já confirmada.
+
+## Pendências conhecidas (não urgentes, sem dinheiro em risco)
+- Fase 4 (enviar pra SP do watch-only air-gapped) e Fase 5 (watch-only
+  "somente scan") do plano original — não começadas.
+- Carteira BIP84 não gasta UTXO SP (ver acima).
+- Progresso de sync ainda é por bloco, não por transação — bloco pesado de
+  mainnet ainda parece "devagar" (não trava mais, mas UX podia melhorar).
+- Itens médios/baixos de auditorias antigas ainda pendentes — ver git log
+  e sessões antigas se for retomar hardening geral (não relacionado a SP).
+
+## Avisos de ambiente (valem sempre, não mudou)
+- Servidor sem emulador Android nem device USB conectado — testes reais
+  dependem do celular físico do Felipe.
+- `adb` em `/home/felipe/Android/platform-tools/adb`, fora do PATH.
+- Gradle: sempre `--no-daemon` (servidor com pouca RAM).
+- APK pro celular: copiar pra `/home/felipe/Downloads/` com nome novo/
+  único a cada vez (evita cache de nome repetido no celular dele).
+- `WalletStorage`/wallet.json passa por Android Keystore — não testável
+  em JVM pura, só validação real no aparelho.
