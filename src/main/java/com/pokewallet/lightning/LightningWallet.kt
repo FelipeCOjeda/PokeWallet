@@ -2,11 +2,13 @@ package com.pokewallet.lightning
 
 import android.content.Context
 import breez_sdk_spark.BreezSdk
+import breez_sdk_spark.CheckLightningAddressRequest
 import breez_sdk_spark.Config
 import breez_sdk_spark.ConnectRequest
 import breez_sdk_spark.EventListener
 import breez_sdk_spark.GetInfoRequest
 import breez_sdk_spark.InputType
+import breez_sdk_spark.LightningAddressInfo
 import breez_sdk_spark.LnurlPayRequest
 import breez_sdk_spark.OnchainConfirmationSpeed
 import breez_sdk_spark.Payment
@@ -17,6 +19,7 @@ import breez_sdk_spark.PrepareSendPaymentRequest
 import breez_sdk_spark.PrepareSendPaymentResponse
 import breez_sdk_spark.ReceivePaymentMethod
 import breez_sdk_spark.ReceivePaymentRequest
+import breez_sdk_spark.RegisterLightningAddressRequest
 import breez_sdk_spark.SdkEvent
 import breez_sdk_spark.Seed
 import breez_sdk_spark.SendPaymentMethod
@@ -78,6 +81,24 @@ class LightningWallet private constructor(private val sdk: BreezSdk) {
      *  que BOLT11 quando quem paga também usa Spark/Breez. */
     suspend fun receiveSparkAddress(): String =
         sdk.receivePayment(ReceivePaymentRequest(ReceivePaymentMethod.SparkAddress)).paymentRequest
+
+    /** LN address próprio desta carteira, ou null quando ainda não existe. */
+    suspend fun currentLightningAddress(): LightningAddressInfo? =
+        runCatching { sdk.getLightningAddress() }.getOrNull()
+
+    /** Checa se [username] está disponível no domínio configurado
+     *  (bitcoinfaucet.st) antes de registrar. */
+    suspend fun checkLightningAddressAvailable(username: String): Boolean =
+        sdk.checkLightningAddressAvailable(CheckLightningAddressRequest(username))
+
+    /** Registra o LN address desta carteira no domínio configurado. */
+    suspend fun registerLightningAddress(username: String, description: String): LightningAddressInfo =
+        sdk.registerLightningAddress(RegisterLightningAddressRequest(username, description))
+
+    /** Apaga o LN address registrado nesta carteira. */
+    suspend fun deleteLightningAddress() {
+        sdk.deleteLightningAddress()
+    }
 
     /**
      * Endereço de DEPÓSITO on-chain (peg-in: BTC on-chain vira saldo
@@ -238,6 +259,7 @@ class LightningWallet private constructor(private val sdk: BreezSdk) {
 
             val config = defaultConfig(sparkNetwork).apply {
                 apiKey = BuildConfig.BREEZ_API_KEY
+                lnurlDomain = "bitcoinfaucet.st"
             }
             val seed = Seed.Mnemonic(mnemonic.joinToString(" "), passphrase)
             val storageDir = LightningStorage.storageDir(context.filesDir, walletId).absolutePath

@@ -3,6 +3,7 @@ package com.pokewallet.android
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import breez_sdk_spark.LightningAddressInfo
 import com.pokewallet.crypto.*
 import com.pokewallet.lightning.supportsLightning
 import com.pokewallet.network.BalanceCrossChecker
@@ -610,6 +611,23 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun lightningReceiveSparkAddress(): String =
         lightningWallet?.receiveSparkAddress()
             ?: throw IllegalStateException("Lightning não conectado")
+
+    suspend fun lightningCurrentAddress(): LightningAddressInfo? =
+        lightningWallet?.currentLightningAddress()
+            ?: throw IllegalStateException("Lightning não conectado")
+
+    suspend fun lightningCheckAddressAvailable(username: String): Boolean =
+        lightningWallet?.checkLightningAddressAvailable(username)
+            ?: throw IllegalStateException("Lightning não conectado")
+
+    suspend fun lightningRegisterAddress(username: String, description: String): LightningAddressInfo =
+        lightningWallet?.registerLightningAddress(username, description)
+            ?: throw IllegalStateException("Lightning não conectado")
+
+    suspend fun lightningDeleteAddress() {
+        val active = lightningWallet ?: throw IllegalStateException("Lightning não conectado")
+        active.deleteLightningAddress()
+    }
 
     /** Endereço de depósito on-chain (peg-in) — sempre o mesmo, ver
      *  [com.pokewallet.lightning.LightningWallet.receiveOnchainDepositAddress]. */

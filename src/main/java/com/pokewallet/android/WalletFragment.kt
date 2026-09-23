@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import breez_sdk_spark.LightningAddressInfo
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.ChipGroup
@@ -169,6 +170,7 @@ class WalletFragment : Fragment() {
         val btnLightningSend  = view.findViewById<MaterialButton>(R.id.btn_lightning_send)
         val btnLightningPegin  = view.findViewById<MaterialButton>(R.id.btn_lightning_pegin)
         val btnLightningPegout = view.findViewById<MaterialButton>(R.id.btn_lightning_pegout)
+        val btnLightningAddress = view.findViewById<MaterialButton>(R.id.btn_lightning_address)
         val cardError        = view.findViewById<View>(R.id.card_error)
         val tvError          = view.findViewById<TextView>(R.id.tv_error)
         val bottomNav        = view.findViewById<BottomNavigationView>(R.id.bottom_nav)
@@ -268,6 +270,7 @@ class WalletFragment : Fragment() {
         btnLightningSend.setOnClickListener { showLightningSendDialog() }
         btnLightningPegin.setOnClickListener { showPegInConfirm() }
         btnLightningPegout.setOnClickListener { showPegOutConfirm() }
+        btnLightningAddress.setOnClickListener { showLightningAddressDialog() }
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.lightningState.collectLatest { state ->
@@ -2067,6 +2070,145 @@ class WalletFragment : Fragment() {
             groupInput.visibility  = View.VISIBLE
         }
 
+        dialog.show()
+        dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+    }
+
+    /** Gerencia o LN address desta carteira no domínio bitcoinfaucet.st:
+     *  mostra o atual, permite copiar/apagar, ou criar um novo. */
+    private fun showLightningAddressDialog() {
+        val dialogView        = layoutInflater.inflate(R.layout.dialog_lightning_address, null)
+        val tilUsername       = dialogView.findViewById<TextInputLayout>(R.id.til_ln_address_username)
+        val etUsername        = dialogView.findViewById<TextInputEditText>(R.id.et_ln_address_username)
+        val etDescription     = dialogView.findViewById<TextInputEditText>(R.id.et_ln_address_description)
+        val btnCheck          = dialogView.findViewById<MaterialButton>(R.id.btn_check_ln_address)
+        val tvAvailability    = dialogView.findViewById<TextView>(R.id.tv_ln_address_availability)
+        val btnCreate         = dialogView.findViewById<MaterialButton>(R.id.btn_create_ln_address)
+        val groupCurrent      = dialogView.findViewById<View>(R.id.group_ln_address_current)
+        val tvAddress         = dialogView.findViewById<TextView>(R.id.tv_ln_address_value)
+        val btnCopy           = dialogView.findViewById<MaterialButton>(R.id.btn_copy_ln_address)
+        val btnDelete         = dialogView.findViewById<MaterialButton>(R.id.btn_delete_ln_address)
+        val groupCreate       = dialogView.findViewById<View>(R.id.group_ln_address_create)
+        val progress          = dialogView.findViewById<ProgressBar>(R.id.pb_lightning_address)
+        val tvError           = dialogView.findViewById<TextView>(R.id.tv_lightning_address_error)
+
+        tilUsername.suffixText = "@bitcoinfaucet.st"
+
+        val dialog = AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+
+        fun showError(message: String) {
+            tvError.text = message
+            tvError.visibility = View.VISIBLE
+        }
+
+        fun showCreateMode() {
+            groupCurrent.visibility = View.GONE
+            groupCreate.visibility = View.VISIBLE
+        }
+
+        fun showCurrentMode(address: LightningAddressInfo) {
+            tvAddress.text = address.lightningAddress
+            groupCreate.visibility = View.GONE
+            groupCurrent.visibility = View.VISIBLE
+        }
+
+        fun loadCurrent() {
+            progress.visibility = View.VISIBLE
+            tvError.visibility = View.GONE
+            lifecycleScope.launch {
+                try {
+                    val current = viewModel.lightningCurrentAddress()
+                    if (current != null) showCurrentMode(current) else showCreateMode()
+                } catch (e: Exception) {
+                    showCreateMode()
+                    showError(e.message ?: "Não foi possível carregar o LN Address.")
+                } finally {
+                    progress.visibility = View.GONE
+                }
+            }
+        }
+
+        btnCheck.setOnClickListener {
+            val username = etUsername.text?.toString()?.trim().orEmpty()
+            if (username.isBlank()) {
+                tvAvailability.text = "Informe um nome antes de verificar."
+                tvAvailability.setTextColor(ContextCompat.getColor(requireContext(), R.color.error_red))
+                tvAvailability.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            tvAvailability.visibility = View.GONE
+            progress.visibility = View.VISIBLE
+            lifecycleScope.launch {
+                try {
+                    val available = viewModel.lightningCheckAddressAvailable(username)
+                    tvAvailability.text = if (available) "✅ $username@bitcoinfaucet.st disponível" else "❌ $username@bitcoinfaucet.st indisponível"
+                    tvAvailability.setTextColor(ContextCompat.getColor(requireContext(), if (available) R.color.green_status else R.color.error_red))
+                    tvAvailability.visibility = View.VISIBLE
+                } catch (e: Exception) {
+                    showError(e.message ?: "Não foi possível verificar o nome.")
+                } finally {
+                    progress.visibility = View.GONE
+                }
+            }
+        }
+
+        btnCreate.setOnClickListener {
+            val username = etUsername.text?.toString()?.trim().orEmpty()
+            if (username.isBlank()) {
+                showError("Informe um nome para criar o LN Address.")
+                return@setOnClickListener
+            }
+            progress.visibility = View.VISIBLE
+            tvError.visibility = View.GONE
+            lifecycleScope.launch {
+                try {
+                    val created = viewModel.lightningRegisterAddress(
+                        username = username,
+                        description = etDescription.text?.toString()?.trim().orEmpty()
+                    )
+                    showCurrentMode(created)
+                    Toast.makeText(requireContext(), "LN Address criado!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    showError(e.message ?: "Não foi possível criar o LN Address.")
+                } finally {
+                    progress.visibility = View.GONE
+                }
+            }
+        }
+
+        btnCopy.setOnClickListener {
+            val cm = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("LN Address", tvAddress.text))
+            Toast.makeText(requireContext(), "LN Address copiado!", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+        }
+
+        btnDelete.setOnClickListener {
+            AlertDialog.Builder(requireContext(), R.style.Theme_PokéWallet_Dialog)
+                .setTitle("Apagar LN Address")
+                .setMessage("Tem certeza que deseja apagar ${tvAddress.text}?")
+                .setPositiveButton("Apagar") { _, _ ->
+                    progress.visibility = View.VISIBLE
+                    lifecycleScope.launch {
+                        try {
+                            viewModel.lightningDeleteAddress()
+                            showCreateMode()
+                            Toast.makeText(requireContext(), "LN Address apagado.", Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            showError(e.message ?: "Não foi possível apagar o LN Address.")
+                        } finally {
+                            progress.visibility = View.GONE
+                        }
+                    }
+                }
+                .setNegativeButton("Cancelar", null)
+                .show()
+        }
+
+        loadCurrent()
         dialog.show()
         dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
     }

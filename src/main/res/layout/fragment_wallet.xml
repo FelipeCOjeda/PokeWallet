@@ -800,6 +800,15 @@
 
                         </LinearLayout>
 
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_lightning_address"
+                            style="@style/Gameboy.Button.Outline"
+                            android:layout_width="match_parent"
+                            android:layout_height="48dp"
+                            android:layout_marginTop="10dp"
+                            android:text="👤 LN Address (@bitcoinfaucet.st)"
+                            android:textSize="10sp" />
+
                     </LinearLayout>
 
                     <View

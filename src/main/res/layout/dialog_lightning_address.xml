@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_overworld_repeat">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_gameboy_box"
+        android:padding="24dp"
+        android:gravity="center_horizontal">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="👤 LN ADDRESS"
+            android:textSize="12sp"
+            style="@style/Gameboy.Title"
+            android:gravity="center"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Domínio: @bitcoinfaucet.st"
+            android:textSize="11sp"
+            android:textColor="@color/gb_border_soft"
+            android:gravity="center"
+            android:layout_marginBottom="16dp" />
+
+        <ProgressBar
+            android:id="@+id/pb_lightning_address"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:indeterminate="true"
+            android:indeterminateTint="@color/primary_red"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tv_lightning_address_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="11sp"
+            android:textColor="@color/error_red"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
+        <!-- Modo: já existe um LN address registrado -->
+        <LinearLayout
+            android:id="@+id/group_ln_address_current"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tv_ln_address_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:fontFamily="monospace"
+                android:textColor="@color/gb_border"
+                android:background="@color/bg_dark"
+                android:padding="14dp"
+                android:textIsSelectable="true"
+                android:gravity="center"
+                android:layout_marginBottom="14dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_copy_ln_address"
+                style="@style/Gameboy.Button"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="📋 Copiar"
+                android:textSize="11sp"
+                app:backgroundTint="@color/green_status" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_delete_ln_address"
+                style="@style/Gameboy.Button.Outline"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
+                android:text="🗑 Apagar"
+                android:textSize="11sp"
+                android:textColor="@color/error_red" />
+
+        </LinearLayout>
+
+        <!-- Modo: criar um LN address novo -->
+        <LinearLayout
+            android:id="@+id/group_ln_address_create"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/til_ln_address_username"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="nome"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_marginBottom="10dp"
+                app:boxStrokeColor="@color/gb_border_soft"
+                app:hintTextColor="@color/gb_border_soft">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_ln_address_username"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text"
+                    android:textColor="@color/gb_border"
+                    android:fontFamily="monospace"
+                    android:singleLine="true" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="descrição (opcional)"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_marginBottom="10dp"
+                app:boxStrokeColor="@color/gb_border_soft"
+                app:hintTextColor="@color/gb_border_soft">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_ln_address_description"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text"
+                    android:textColor="@color/gb_border"
+                    android:fontFamily="monospace"
+                    android:singleLine="true" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_check_ln_address"
+                style="@style/Gameboy.Button.Outline"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="🔎 Verificar disponibilidade"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/tv_ln_address_availability"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="11sp"
+                android:textColor="@color/gb_border_soft"
+                android:layout_marginTop="8dp"
+                android:visibility="gone" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_create_ln_address"
+                style="@style/Gameboy.Button"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
+                android:text="✅ Criar LN Address"
+                android:textSize="10sp"
+                app:backgroundTint="@color/green_status" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

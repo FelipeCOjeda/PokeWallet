@@ -2,8 +2,17 @@
 PKMBTCWALLET - SESSÃO DE TRABALHO
 Atualizado: 2026-09-22 — EM ANDAMENTO: Silent Payments em background +
 scan fatiado, Mochila reorganizada, receber/enviar com opção Lightning,
-fix do saque LN para on-chain.
+LN Address próprio em @bitcoinfaucet.st.
 ================================================================================
+
+## LN Address próprio (@bitcoinfaucet.st) (2026-09-22)
+- `LightningWallet.connect()` configura `lnurlDomain = "bitcoinfaucet.st"`.
+- Wrapper e ViewModel ganharam: current, checkAvailable, register, delete.
+- Novo diálogo `dialog_lightning_address.xml` + botão na seção Lightning
+  para ver/copiar/apagar/criar o LN address vinculado à carteira.
+
+Validação: `assembleDebug` OK. APK:
+`Downloads/pkmbtcwallet-debug-20260922-202138.apk`.
 
 ## Mochila, botões LN e saque LN (2026-09-22)
 - Mochila reorganizada com subdivisões visuais (`bg_bag_section.xml`),
