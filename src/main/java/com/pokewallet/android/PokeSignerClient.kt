@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import java.io.Closeable
@@ -48,6 +49,10 @@ class PokeSignerClient(private val ctx: Context) : Closeable {
         const val CMD_GET_INFO = 0x01
         const val CMD_SIGN     = 0x02
         const val CMD_PING     = 0x03
+        const val CMD_CONFIRM  = 0x04
+        const val CMD_CANCEL   = 0x05
+        const val CMD_NEXT     = 0x06
+        const val CMD_PREV     = 0x07
         const val RSP_INFO     = 0x81
         const val RSP_SIGNED   = 0x82
         const val RSP_PONG     = 0x83
@@ -228,21 +233,7 @@ class PokeSignerClient(private val ctx: Context) : Closeable {
         onStatus: (String) -> Unit = {}
     ): ByteArray {
         require(payload.size <= MAX_PAYLOAD) { "PSBT grande demais para o PokeSigner (máx. 32 KB)." }
-        val frame = byteArrayOf(cmd.toByte()) + le32(payload.size) + payload
-        val chunk = (mtu - 3).coerceIn(20, 512)
-
-        var offset = 0
-        while (offset < frame.size) {
-            val end = minOf(offset + chunk, frame.size)
-            val piece = frame.copyOfRange(offset, end)
-            var status = writeChunk(piece)
-            if (status == 5 || status == 15) { // exige bond: aguarda e repete a mesma fatia
-                awaitBond(gatt!!.device)
-                status = writeChunk(piece)
-            }
-            if (status != BluetoothGatt.GATT_SUCCESS) throw SignerException("Falha ao enviar ao PokeSigner (GATT $status).")
-            offset = end
-        }
+        sendFrame(cmd, payload)
 
         try {
             return withTimeout(timeoutMs) {
@@ -265,6 +256,33 @@ class PokeSignerClient(private val ctx: Context) : Closeable {
             throw SignerException("O PokeSigner não respondeu a tempo.")
         }
     }
+
+    private val writeMutex = kotlinx.coroutines.sync.Mutex()
+
+    /** Escreve um quadro [cmd][len][payload]; serializado, pois o GATT só aceita uma escrita por vez. */
+    private suspend fun sendFrame(cmd: Int, payload: ByteArray) = writeMutex.withLock {
+        val frame = byteArrayOf(cmd.toByte()) + le32(payload.size) + payload
+        val chunk = (mtu - 3).coerceIn(20, 512)
+
+        var offset = 0
+        while (offset < frame.size) {
+            val end = minOf(offset + chunk, frame.size)
+            val piece = frame.copyOfRange(offset, end)
+            var status = writeChunk(piece)
+            if (status == 5 || status == 15) { // exige bond: aguarda e repete a mesma fatia
+                awaitBond(gatt!!.device)
+                status = writeChunk(piece)
+            }
+            if (status != BluetoothGatt.GATT_SUCCESS) throw SignerException("Falha ao enviar ao PokeSigner (GATT $status).")
+            offset = end
+        }
+    }
+
+    // Comandos de controle durante um SIGN_PSBT pendente (v0.4.0+): o resultado vem no SIGN.
+    suspend fun confirmCode(code: String) = sendFrame(CMD_CONFIRM, code.toByteArray(Charsets.US_ASCII))
+    suspend fun cancelSigning() = sendFrame(CMD_CANCEL, ByteArray(0))
+    suspend fun nextPage() = sendFrame(CMD_NEXT, ByteArray(0))
+    suspend fun prevPage() = sendFrame(CMD_PREV, ByteArray(0))
 
     private suspend fun writeChunk(piece: ByteArray): Int {
         val g = gatt ?: throw SignerException("Conexão com o PokeSigner caiu.")

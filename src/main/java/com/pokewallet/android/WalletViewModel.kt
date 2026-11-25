@@ -127,7 +127,8 @@ sealed class AirGappedSendState {
 /** PokeSigner (assinador BLE): leitura da xpub e assinatura de PSBT. */
 sealed class PokeSignerState {
     object Idle : PokeSignerState()
-    data class Working(val message: String) : PokeSignerState()
+    /** [interactive]: assinatura pendente na placa — a UI mostra ◀ ▶ ✖ e o campo do código. */
+    data class Working(val message: String, val interactive: Boolean = false) : PokeSignerState()
     /** String "[fp/path]xpub" pronta pro campo de import watch-only. */
     data class OriginReady(val origin: String) : PokeSignerState()
     data class Error(val message: String) : PokeSignerState()
@@ -2286,6 +2287,23 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
     fun resetAirGappedBroadcastState() { _airGappedBroadcastState.value = AirGappedBroadcastState.Idle }
 
+    @Volatile private var activePokeSignerClient: PokeSignerClient? = null
+
+    /** Controle da revisão na placa durante o SIGN_PSBT: ◀ ▶ ✖ e código de aprovação. */
+    fun pokeSignerControl(action: (suspend PokeSignerClient.() -> Unit)) {
+        val client = activePokeSignerClient ?: return
+        viewModelScope.launch {
+            try { client.action() } catch (e: CancellationException) { throw e } catch (_: Exception) {
+                // falha de escrita: o SIGN pendente acusa a queda da conexão e mostra o erro
+            }
+        }
+    }
+
+    fun pokeSignerConfirmCode(code: String) = pokeSignerControl { confirmCode(code) }
+    fun pokeSignerCancel() = pokeSignerControl { cancelSigning() }
+    fun pokeSignerNext() = pokeSignerControl { nextPage() }
+    fun pokeSignerPrev() = pokeSignerControl { prevPage() }
+
     fun resetPokeSignerState() { _pokeSignerState.value = PokeSignerState.Idle }
 
     private fun pokeSignerErrorMessage(e: Exception): String =
@@ -2346,10 +2364,13 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                     )
                     client.connect(device)
                     _pokeSignerState.value = PokeSignerState.Working(
-                        "Revise na placa: BOOT avança, segure 2 s na última tela para aprovar"
+                        "Revise na placa. Na última tela ela mostra um código de 6 dígitos: digite-o aqui " +
+                            "(ou segure BOOT por 2 s na placa) para aprovar.",
+                        interactive = true
                     )
+                    activePokeSignerClient = client
                     val signed = client.signPsbt(java.util.Base64.getDecoder().decode(psbt.psbtBase64)) { status ->
-                        _pokeSignerState.value = PokeSignerState.Working(status)
+                        _pokeSignerState.value = PokeSignerState.Working(status, interactive = true)
                     }
                     PokeSignerPsbt.finalizeSigned(signed)
                 }
@@ -2360,6 +2381,7 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 _pokeSignerState.value = PokeSignerState.Error(pokeSignerErrorMessage(e))
             } finally {
+                activePokeSignerClient = null
                 client.close()
             }
         }

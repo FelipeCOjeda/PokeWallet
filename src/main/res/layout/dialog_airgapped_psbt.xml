@@ -52,6 +52,77 @@
             android:layout_marginBottom="16dp"
             android:visibility="gone" />
 
+        <LinearLayout
+            android:id="@+id/layout_pokesigner_controls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_pokesigner_prev"
+                    style="@style/Gameboy.Button.Outline"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:text="◀"
+                    android:layout_marginEnd="6dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_pokesigner_next"
+                    style="@style/Gameboy.Button.Outline"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:text="▶"
+                    android:layout_marginEnd="6dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_pokesigner_cancel"
+                    style="@style/Gameboy.Button.Outline"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:text="✖" />
+            </LinearLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="código da tela da placa (6 dígitos)"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_marginBottom="8dp"
+                app:boxStrokeColor="@color/gb_border_soft"
+                app:hintTextColor="@color/gb_border_soft">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_pokesigner_code"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:maxLength="6"
+                    android:textColor="@color/gb_border"
+                    android:fontFamily="monospace"
+                    android:textSize="18sp" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_pokesigner_confirm"
+                style="@style/Gameboy.Button"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Aprovar com o código"
+                android:textSize="12sp"
+                app:backgroundTint="@color/bitcoin_orange" />
+        </LinearLayout>
+
         <ImageView
             android:id="@+id/img_qr_psbt"
             android:layout_width="240dp"

@@ -1506,6 +1506,8 @@ class WalletFragment : Fragment() {
         val tvModeExplainer = dialogView.findViewById<TextView>(R.id.tv_airgapped_mode_explainer)
         val btnPokeSigner = dialogView.findViewById<MaterialButton>(R.id.btn_sign_pokesigner)
         val tvPokeSignerStatus = dialogView.findViewById<TextView>(R.id.tv_pokesigner_status)
+        val layoutPokeSignerControls = dialogView.findViewById<LinearLayout>(R.id.layout_pokesigner_controls)
+        val etPokeSignerCode = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.et_pokesigner_code)
 
         var broadcastMode: SendMode = SendMode.Tor
         rgMode.setOnCheckedChangeListener { _, checkedId ->
@@ -1539,6 +1541,19 @@ class WalletFragment : Fragment() {
             .setView(dialogView)
             .setCancelable(false)
             .create()
+
+        dialogView.findViewById<MaterialButton>(R.id.btn_pokesigner_prev).setOnClickListener { viewModel.pokeSignerPrev() }
+        dialogView.findViewById<MaterialButton>(R.id.btn_pokesigner_next).setOnClickListener { viewModel.pokeSignerNext() }
+        dialogView.findViewById<MaterialButton>(R.id.btn_pokesigner_cancel).setOnClickListener { viewModel.pokeSignerCancel() }
+        dialogView.findViewById<MaterialButton>(R.id.btn_pokesigner_confirm).setOnClickListener {
+            val code = etPokeSignerCode.text?.toString()?.trim().orEmpty()
+            if (code.length != 6) {
+                Toast.makeText(requireContext(), "Digite os 6 dígitos que aparecem na tela da placa.", Toast.LENGTH_SHORT).show()
+            } else {
+                viewModel.pokeSignerConfirmCode(code)
+                etPokeSignerCode.text?.clear()
+            }
+        }
 
         btnPokeSigner.setOnClickListener {
             PokeSignerUi.ensureReady(this) {
@@ -1574,6 +1589,8 @@ class WalletFragment : Fragment() {
             viewModel.pokeSignerState.collectLatest { state ->
                 val busy = state is PokeSignerState.Working
                 btnPokeSigner.isEnabled = !busy
+                layoutPokeSignerControls.visibility =
+                    if (state is PokeSignerState.Working && state.interactive) View.VISIBLE else View.GONE
                 when (state) {
                     is PokeSignerState.Working -> {
                         tvPokeSignerStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.gb_border_soft))
