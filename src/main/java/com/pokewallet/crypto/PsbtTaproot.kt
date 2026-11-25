@@ -29,10 +29,9 @@ data class PsbtTaproot(
          * Parser Base64 análogo a Psbt.parseBase64(), com os key-types
          * BIP371 (Taproot) em vez dos BIP174 originais (SegWit v0):
          * PSBT_IN_TAP_INTERNAL_KEY (0x17), PSBT_IN_TAP_BIP32_DERIVATION
-         * (0x16), PSBT_OUT_TAP_BIP32_DERIVATION (0x07). Não parseia
-         * PSBT_IN_TAP_KEY_SIG (0x13) — este app nunca serializa uma
-         * assinatura DENTRO de um PSBT (ver nota em PsbtTaproot.serializeBase64()),
-         * então nunca há uma pra ler de volta aqui.
+         * (0x16), PSBT_OUT_TAP_BIP32_DERIVATION (0x07). Lê também
+         * PSBT_IN_TAP_KEY_SIG (0x13): o app não serializa assinatura, mas o
+         * PokeSigner (BLE) devolve o PSBT com ela e precisamos finalizá-lo.
          */
         fun parseBase64(psbtBase64: String): PsbtTaproot {
             val raw = Base64.getDecoder().decode(psbtBase64)
@@ -72,6 +71,7 @@ data class PsbtTaproot(
                     buffer.get(value)
                     when (key[0].toInt()) {
                         0x01 -> input.witnessUtxo = TxOut.parse(value)
+                        0x13 -> input.tapKeySig = value
                         0x17 -> input.tapInternalKey = value
                         0x16 -> {
                             // key = 0x16 + pubkey x-only (32 bytes) — só há uma chave

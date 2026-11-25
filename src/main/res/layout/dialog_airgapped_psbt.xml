@@ -32,6 +32,26 @@
             android:gravity="center"
             android:layout_marginBottom="20dp" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_sign_pokesigner"
+            style="@style/Gameboy.Button"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="🎮 Assinar no PokeSigner (Bluetooth)"
+            android:textSize="12sp"
+            app:backgroundTint="@color/bitcoin_orange"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tv_pokesigner_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:textColor="@color/gb_border_soft"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone" />
+
         <ImageView
             android:id="@+id/img_qr_psbt"
             android:layout_width="240dp"

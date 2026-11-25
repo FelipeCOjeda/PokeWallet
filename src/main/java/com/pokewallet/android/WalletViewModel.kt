@@ -124,6 +124,15 @@ sealed class AirGappedSendState {
     data class Error(val message: String) : AirGappedSendState()
 }
 
+/** PokeSigner (assinador BLE): leitura da xpub e assinatura de PSBT. */
+sealed class PokeSignerState {
+    object Idle : PokeSignerState()
+    data class Working(val message: String) : PokeSignerState()
+    /** String "[fp/path]xpub" pronta pro campo de import watch-only. */
+    data class OriginReady(val origin: String) : PokeSignerState()
+    data class Error(val message: String) : PokeSignerState()
+}
+
 /** Lado watch-only: recebeu a tx assinada de volta, verifica e transmite (Fase C5). */
 sealed class AirGappedBroadcastState {
     object Idle       : AirGappedBroadcastState()
@@ -308,6 +317,9 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _airGappedBroadcastState = MutableStateFlow<AirGappedBroadcastState>(AirGappedBroadcastState.Idle)
     val airGappedBroadcastState: StateFlow<AirGappedBroadcastState> = _airGappedBroadcastState.asStateFlow()
+
+    private val _pokeSignerState = MutableStateFlow<PokeSignerState>(PokeSignerState.Idle)
+    val pokeSignerState: StateFlow<PokeSignerState> = _pokeSignerState.asStateFlow()
 
     private val _airGappedSignState = MutableStateFlow<AirGappedSignState>(AirGappedSignState.Idle)
     val airGappedSignState: StateFlow<AirGappedSignState> = _airGappedSignState.asStateFlow()
@@ -2273,6 +2285,85 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resetAirGappedBroadcastState() { _airGappedBroadcastState.value = AirGappedBroadcastState.Idle }
+
+    fun resetPokeSignerState() { _pokeSignerState.value = PokeSignerState.Idle }
+
+    private fun pokeSignerErrorMessage(e: Exception): String =
+        if (e is PokeSignerClient.SignerException) e.message ?: "Erro no PokeSigner" else humanizeError(e)
+
+    /** Lê a xpub do PokeSigner via BLE e devolve a string de origem que
+     *  WalletWatchOnlyImport.parse() aceita ("[fp/84h/0h/0h]xpub…"). */
+    fun readPokeSignerOrigin(network: Network, spendType: SpendType) {
+        _pokeSignerState.value = PokeSignerState.Working("Procurando PokeSigner…")
+        viewModelScope.launch {
+            val client = PokeSignerClient(getApplication())
+            try {
+                val origin = withContext(Dispatchers.IO) {
+                    val device = client.findDevice()
+                    _pokeSignerState.value = PokeSignerState.Working(
+                        "Conectando… se pedir, digite o código de 6 dígitos da tela da placa"
+                    )
+                    client.connect(device)
+                    _pokeSignerState.value = PokeSignerState.Working("Lendo a chave pública…")
+                    val info = client.getInfo(testnet = network != Network.MAINNET)
+                    val wantedType = if (spendType == SpendType.BIP86) "tr" else "wpkh"
+                    val accounts = info.getJSONArray("accounts")
+                    var found: String? = null
+                    for (i in 0 until accounts.length()) {
+                        val acc = accounts.getJSONObject(i)
+                        if (acc.getString("type") == wantedType) {
+                            found = "[" + info.getString("fingerprint") + "/" +
+                                acc.getString("path").removePrefix("m/") + "]" + acc.getString("xpub")
+                            break
+                        }
+                    }
+                    found ?: throw PokeSignerClient.SignerException(
+                        "O PokeSigner não informou uma conta do tipo escolhido."
+                    )
+                }
+                _pokeSignerState.value = PokeSignerState.OriginReady(origin)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _pokeSignerState.value = PokeSignerState.Error(pokeSignerErrorMessage(e))
+            } finally {
+                client.close()
+            }
+        }
+    }
+
+    /** Envia o PSBT por BLE, o usuário aprova na placa; finaliza o PSBT
+     *  assinado e transmite pelo mesmo caminho do QR (que confere o txid). */
+    fun signWithPokeSigner(psbt: AirGappedPsbt, mode: SendMode) {
+        _pokeSignerState.value = PokeSignerState.Working("Procurando PokeSigner…")
+        viewModelScope.launch {
+            val client = PokeSignerClient(getApplication())
+            try {
+                val rawHex = withContext(Dispatchers.IO) {
+                    val device = client.findDevice()
+                    _pokeSignerState.value = PokeSignerState.Working(
+                        "Conectando… se pedir, digite o código de 6 dígitos da tela da placa"
+                    )
+                    client.connect(device)
+                    _pokeSignerState.value = PokeSignerState.Working(
+                        "Revise na placa: BOOT avança, segure 2 s na última tela para aprovar"
+                    )
+                    val signed = client.signPsbt(java.util.Base64.getDecoder().decode(psbt.psbtBase64)) { status ->
+                        _pokeSignerState.value = PokeSignerState.Working(status)
+                    }
+                    PokeSignerPsbt.finalizeSigned(signed)
+                }
+                _pokeSignerState.value = PokeSignerState.Idle
+                submitSignedAirGappedTx(rawHex, psbt.expectedTxid, psbt.network, mode)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _pokeSignerState.value = PokeSignerState.Error(pokeSignerErrorMessage(e))
+            } finally {
+                client.close()
+            }
+        }
+    }
 
     /** Lado signer: assina um PSBT escaneado com a seed da carteira ativa. */
     fun signAirGappedPsbt(psbtBase64: String) {

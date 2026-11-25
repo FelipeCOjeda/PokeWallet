@@ -1504,6 +1504,8 @@ class WalletFragment : Fragment() {
         val btnClose     = dialogView.findViewById<MaterialButton>(R.id.btn_close_airgapped)
         val rgMode       = dialogView.findViewById<RadioGroup>(R.id.rg_airgapped_broadcast_mode)
         val tvModeExplainer = dialogView.findViewById<TextView>(R.id.tv_airgapped_mode_explainer)
+        val btnPokeSigner = dialogView.findViewById<MaterialButton>(R.id.btn_sign_pokesigner)
+        val tvPokeSignerStatus = dialogView.findViewById<TextView>(R.id.tv_pokesigner_status)
 
         var broadcastMode: SendMode = SendMode.Tor
         rgMode.setOnCheckedChangeListener { _, checkedId ->
@@ -1538,6 +1540,13 @@ class WalletFragment : Fragment() {
             .setCancelable(false)
             .create()
 
+        btnPokeSigner.setOnClickListener {
+            PokeSignerUi.ensureReady(this) {
+                tvResult.visibility = View.GONE
+                viewModel.signWithPokeSigner(psbt, broadcastMode)
+            }
+        }
+
         btnScan.setOnClickListener {
             launchQrScan("Aponte para o QR da tx assinada") { scanned ->
                 progress.visibility = View.VISIBLE
@@ -1561,6 +1570,27 @@ class WalletFragment : Fragment() {
             viewModel.submitSignedAirGappedTx(hex, psbt.expectedTxid, psbt.network, broadcastMode)
         }
 
+        val pokeSignerJob = viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.pokeSignerState.collectLatest { state ->
+                val busy = state is PokeSignerState.Working
+                btnPokeSigner.isEnabled = !busy
+                when (state) {
+                    is PokeSignerState.Working -> {
+                        tvPokeSignerStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.gb_border_soft))
+                        tvPokeSignerStatus.text = state.message
+                        tvPokeSignerStatus.visibility = View.VISIBLE
+                    }
+                    is PokeSignerState.Error -> {
+                        tvPokeSignerStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.error_red))
+                        tvPokeSignerStatus.text = state.message
+                        tvPokeSignerStatus.visibility = View.VISIBLE
+                        viewModel.resetPokeSignerState()
+                    }
+                    else -> tvPokeSignerStatus.visibility = View.GONE
+                }
+            }
+        }
+
         airGappedBroadcastJob?.cancel()
         airGappedBroadcastJob = viewLifecycleOwner.lifecycleScope.launch {
             viewModel.airGappedBroadcastState.collectLatest { state ->
@@ -1570,6 +1600,7 @@ class WalletFragment : Fragment() {
                     }
                     is AirGappedBroadcastState.Success -> {
                         progress.visibility = View.GONE
+                        btnPokeSigner.visibility = View.GONE
                         btnScan.visibility = View.GONE
                         layoutPasteHex.visibility = View.GONE
                         tvResult.setTextColor(ContextCompat.getColor(requireContext(), R.color.green_status))
@@ -1592,6 +1623,8 @@ class WalletFragment : Fragment() {
         }
 
         btnClose.setOnClickListener {
+            pokeSignerJob.cancel()
+            viewModel.resetPokeSignerState()
             dialog.dismiss()
         }
 

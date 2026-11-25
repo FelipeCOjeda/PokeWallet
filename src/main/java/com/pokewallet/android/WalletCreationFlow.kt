@@ -466,6 +466,8 @@ object WalletCreationFlow {
         val tvError         = dialogView.findViewById<TextView>(R.id.tv_watchonly_error)
         val btnCancel       = dialogView.findViewById<MaterialButton>(R.id.btn_cancel_watchonly)
         val btnConfirm      = dialogView.findViewById<MaterialButton>(R.id.btn_confirm_watchonly)
+        val btnPokeSigner   = dialogView.findViewById<MaterialButton>(R.id.btn_read_pokesigner)
+        val tvPokeSigner    = dialogView.findViewById<TextView>(R.id.tv_pokesigner_status_import)
 
         var selectedNetwork = Network.MAINNET
         var selectedSpendType = SpendType.BIP84
@@ -487,8 +489,44 @@ object WalletCreationFlow {
 
         btnCancel.setOnClickListener {
             viewModel.resetWatchOnlyImportState()
+            viewModel.resetPokeSignerState()
             dialog.dismiss()
         }
+
+        btnPokeSigner.setOnClickListener {
+            PokeSignerUi.ensureReady(fragment) {
+                tvError.visibility = View.GONE
+                viewModel.readPokeSignerOrigin(selectedNetwork, selectedSpendType)
+            }
+        }
+
+        val pokeSignerJob = fragment.viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.pokeSignerState.collectLatest { state ->
+                btnPokeSigner.isEnabled = state !is PokeSignerState.Working
+                when (state) {
+                    is PokeSignerState.Working -> {
+                        tvPokeSigner.setTextColor(ContextCompat.getColor(context, R.color.gb_border_soft))
+                        tvPokeSigner.text = state.message
+                        tvPokeSigner.visibility = View.VISIBLE
+                    }
+                    is PokeSignerState.OriginReady -> {
+                        etOrigin.setText(state.origin)
+                        tvPokeSigner.setTextColor(ContextCompat.getColor(context, R.color.gb_border_soft))
+                        tvPokeSigner.text = "Chave lida do PokeSigner. Confira rede e tipo e toque em Importar."
+                        tvPokeSigner.visibility = View.VISIBLE
+                        viewModel.resetPokeSignerState()
+                    }
+                    is PokeSignerState.Error -> {
+                        tvPokeSigner.setTextColor(ContextCompat.getColor(context, R.color.error_red))
+                        tvPokeSigner.text = state.message
+                        tvPokeSigner.visibility = View.VISIBLE
+                        viewModel.resetPokeSignerState()
+                    }
+                    is PokeSignerState.Idle -> {}
+                }
+            }
+        }
+        dialog.setOnDismissListener { pokeSignerJob.cancel() }
 
         btnConfirm.setOnClickListener {
             val accountOrigin = etOrigin.text?.toString()?.trim() ?: ""
