@@ -1141,7 +1141,7 @@ class WalletFragment : Fragment() {
 
         sliderFee.addOnChangeListener { _, value, _ -> updateFeeLabels(value.toDouble()) }
 
-        var currentSendMode: SendMode = SendMode.Tor
+        var currentSendMode: SendMode = SendMode.Internet
         rgSendMode.setOnCheckedChangeListener { _, checkedId ->
             currentSendMode = when (checkedId) {
                 R.id.rb_mode_tor     -> SendMode.Tor
