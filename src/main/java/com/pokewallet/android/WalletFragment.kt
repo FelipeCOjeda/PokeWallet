@@ -1509,7 +1509,7 @@ class WalletFragment : Fragment() {
         val layoutPokeSignerControls = dialogView.findViewById<LinearLayout>(R.id.layout_pokesigner_controls)
         val etPokeSignerCode = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.et_pokesigner_code)
 
-        var broadcastMode: SendMode = SendMode.Tor
+        var broadcastMode: SendMode = SendMode.Internet
         rgMode.setOnCheckedChangeListener { _, checkedId ->
             broadcastMode = when (checkedId) {
                 R.id.rb_airgapped_mode_tor     -> SendMode.Tor
